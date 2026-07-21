@@ -18,11 +18,9 @@ final class TorManager: ObservableObject {
 
     let socksHost = "127.0.0.1"
     let socksPort: UInt16 = 39050
-    let controlPort: UInt16 = 39051
 
     #if canImport(Tor)
     private var thread: TorThread?
-    private var controller: TorController?
     private var config: TorConfiguration?
     #endif
     private var logPath: String?
@@ -85,22 +83,18 @@ final class TorManager: ObservableObject {
         try? FileManager.default.setAttributes([.posixPermissions: 0o700],
                                                ofItemAtPath: dataDir.path)
 
-        let cookiePath = dataDir.appendingPathComponent("control_auth_cookie").path
-        // Log to a file so we can surface Tor's own diagnostics in the UI when
-        // something goes wrong on-device.
+        // Log to a file. This is also how we track bootstrap progress: rather
+        // than fight the control port (which never accepts a connection on
+        // iOS here), we simply tail Tor's own log for "Bootstrapped NN%".
         let logPath = dataDir.appendingPathComponent("tor.log").path
         try? FileManager.default.removeItem(atPath: logPath)
         self.logPath = logPath
-        // NOTE: a unix control socket path in the app container blows past the
-        // 104-char sockaddr_un limit on iOS, so Tor never opens the control
-        // channel. Use a TCP control port on localhost instead.
+
         let cfg = TorConfiguration()
-        cfg.cookieAuthentication = true
+        cfg.cookieAuthentication = false
         cfg.dataDirectory = dataDir
         cfg.arguments = [
             "--SocksPort", "\(socksHost):\(socksPort)",
-            "--ControlPort", "\(socksHost):\(controlPort)",
-            "--CookieAuthFile", cookiePath,
             "--AvoidDiskWrites", "1",
             "--ClientOnly", "1",
             "--Log", "notice file \(logPath)",
@@ -111,95 +105,43 @@ final class TorManager: ObservableObject {
         self.thread = t
         t.start()
 
-        // Wait for the cookie file — its existence means Tor started and the
-        // control channel is coming up.
-        var cookie: Data?
-        for _ in 0..<150 {
-            if let data = try? Data(contentsOf: URL(fileURLWithPath: cookiePath)),
-               !data.isEmpty {
-                cookie = data
-                break
-            }
-            try await Task.sleep(nanoseconds: 200_000_000)
-        }
-        guard let cookie else {
-            throw torError("control cookie not readable", code: -1)
-        }
-
-        let ctl = TorController(socketHost: socksHost, port: controlPort)
-        self.controller = ctl
-
-        // Retry connect — the control port opens a beat after the cookie lands.
-        var connected = false
-        var lastError: Error?
-        for _ in 0..<40 {
-            do {
-                try ctl.connect()
-                connected = true
-                break
-            } catch {
-                lastError = error
-                try await Task.sleep(nanoseconds: 250_000_000)
-            }
-        }
-        guard connected else {
-            let why = (lastError?.localizedDescription).map { " (\($0))" } ?? ""
-            throw torError("control connect failed\(why)", code: -4)
-        }
-
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            ctl.authenticate(with: cookie) { success, error in
-                if success { cont.resume() }
-                else {
-                    cont.resume(throwing: error ?? NSError(
-                        domain: "TorManager", code: -2,
-                        userInfo: [NSLocalizedDescriptionKey: "authenticate failed"]))
-                }
-            }
-        }
-
         await set(status: .bootstrapping, error: nil)
 
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            var finished = false
-            let completion: (String) -> Void = { [weak self] progressStr in
-                if let p = Int(progressStr) {
-                    Task { await self?.set(progress: p) }
-                }
-                if progressStr == "100" && !finished {
-                    finished = true
-                    cont.resume()
+        // Poll Tor's log for progress until it reports 100% (done).
+        let deadline = Date().addingTimeInterval(120)
+        var sawAnyLog = false
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: 400_000_000)
+            guard let log = try? String(contentsOfFile: logPath, encoding: .utf8),
+                  !log.isEmpty else { continue }
+            sawAnyLog = true
+
+            if let pct = Self.latestBootstrapPercent(in: log) {
+                await set(progress: pct)
+                if pct >= 100 {
+                    await set(status: .connected, error: nil)
+                    return
                 }
             }
-
-            _ = ctl.addObserver(forStatusEvents: {
-                (type: String, _: String, action: String, arguments: [String: String]?) -> Bool in
-                if type == "STATUS_CLIENT", action == "BOOTSTRAP",
-                   let progress = arguments?["PROGRESS"] {
-                    completion(progress)
-                }
-                return true
-            })
-
-            ctl.getInfoForKeys(["status/bootstrap-phase"]) { values in
-                if let phase = values.first,
-                   let range = phase.range(of: "PROGRESS=") {
-                    let after = phase[range.upperBound...]
-                    let progressStr = after.prefix { $0.isNumber }
-                    completion(String(progressStr))
-                }
-            }
-
-            Task {
-                try? await Task.sleep(nanoseconds: 90_000_000_000)
-                if !finished {
-                    finished = true
-                    cont.resume(throwing: self.torError("bootstrap timeout", code: -3))
-                }
+            // Bail out early on a fatal Tor error instead of waiting for timeout.
+            if log.contains("[err]") {
+                throw torError("Tor reported a fatal error", code: -5)
             }
         }
 
-        await set(status: .connected, error: nil)
+        throw torError(sawAnyLog ? "bootstrap timeout" : "Tor did not start",
+                       code: -3)
+    }
+
+    /// Highest "Bootstrapped NN%" value seen in the Tor log so far.
+    private static func latestBootstrapPercent(in log: String) -> Int? {
+        var best: Int?
+        for line in log.split(separator: "\n") {
+            guard let r = line.range(of: "Bootstrapped ") else { continue }
+            let digits = line[r.upperBound...].prefix { $0.isNumber }
+            if let n = Int(digits) { best = max(best ?? 0, n) }
+        }
+        return best
     }
 
     #endif
