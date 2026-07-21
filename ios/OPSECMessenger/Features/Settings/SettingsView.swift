@@ -104,10 +104,11 @@ struct SettingsView: View {
 
     private var torColor: Color {
         switch tor.status {
-        case .connected: return .green
-        case .starting:  return .orange
-        case .failed:    return .red
-        case .disabled:  return Theme.textSecondary
+        case .connected:     return .green
+        case .starting:      return .orange
+        case .bootstrapping: return .orange
+        case .failed:        return .red
+        case .disabled:      return Theme.textSecondary
         }
     }
 }
