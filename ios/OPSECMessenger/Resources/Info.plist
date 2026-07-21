@@ -42,14 +42,40 @@
         <string>audio</string>
     </array>
 
-    <!-- Allow HTTP transport. Backend is served over Tor (opaque to ATS)
-         and over dev clearnet on port 8080; iOS default blocks both. -->
+    <!-- Allow HTTP transport. Backend runs over Tor (opaque to ATS) or over
+         dev clearnet on 45.156.87.16:8080. Wildcard AllowsArbitraryLoads
+         handles most iOS versions; the explicit NSExceptionDomains block
+         is a belt-and-braces fallback for stricter builds (iOS 26/27) that
+         may ignore the wildcard for sideloaded apps. -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <true/>
+        <key>NSAllowsArbitraryLoadsInWebContent</key>
+        <true/>
         <key>NSAllowsLocalNetworking</key>
         <true/>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>45.156.87.16</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSExceptionMinimumTLSVersion</key>
+                <string>TLSv1.0</string>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <false/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
+            <key>onion</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+            </dict>
+        </dict>
     </dict>
 </dict>
 </plist>
