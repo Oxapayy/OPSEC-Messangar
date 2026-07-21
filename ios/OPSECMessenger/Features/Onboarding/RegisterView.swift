@@ -10,47 +10,59 @@ struct RegisterView: View {
     @State private var copied = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 12) {
-                    BrandLogo(size: 44)
-                    Text("Please save this 64-character code")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(Theme.textPrimary)
-                }
+        ZStack {
+            Theme.backgroundGradient.ignoresSafeArea()
 
-                Text("This code is your account. It is the ONLY way to sign back in — there is no password reset. Write it down or store it in a password manager before continuing.")
-                    .foregroundStyle(Theme.textSecondary)
-                    .font(.footnote)
+            VStack(spacing: 0) {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(spacing: 12) {
+                            BrandLogo(size: 40)
+                            Text("Save your 64-character code")
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+                        .padding(.top, 4)
 
-                codeCard
+                        Text("This code is your account. It's the ONLY way to sign back in — there is no password reset. Store it in a password manager before continuing.")
+                            .foregroundStyle(Theme.textSecondary)
+                            .font(.footnote)
 
-                HStack {
-                    Text("Account number").foregroundStyle(Theme.textSecondary)
-                    Spacer()
-                    Text(String(numericId))
-                        .monospacedDigit()
-                        .foregroundStyle(Theme.textPrimary)
-                }
-                .font(.footnote)
-                .padding(.horizontal, 4)
+                        codeCard
 
-                Toggle(isOn: $acknowledged) {
-                    Text("I have saved this code somewhere safe.")
+                        HStack {
+                            Text("Account number")
+                                .foregroundStyle(Theme.textSecondary)
+                            Spacer()
+                            Text(String(numericId))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.textPrimary)
+                        }
                         .font(.footnote)
-                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 4)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 4)
                 }
-                .tint(Theme.cyan)
-                .padding(.top, 8)
 
-                Button("Continue", action: onSaved)
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(!acknowledged)
-                    .opacity(acknowledged ? 1 : 0.5)
+                VStack(spacing: 12) {
+                    Toggle(isOn: $acknowledged) {
+                        Text("I have saved this code somewhere safe.")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                    .tint(Theme.cyan)
+
+                    Button("Continue", action: onSaved)
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(!acknowledged)
+                        .opacity(acknowledged ? 1 : 0.5)
+                }
+                .padding(.horizontal)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
             }
-            .padding()
         }
-        .themedBackground()
         .navigationTitle("Your recovery code")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
