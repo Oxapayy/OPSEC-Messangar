@@ -15,7 +15,7 @@ settings:
 packages:
   Tor:
     url: https://github.com/tladesignz/Tor.framework.git
-    from: "408.16.0"
+    branch: master
 
 targets:
   OPSECMessenger:
