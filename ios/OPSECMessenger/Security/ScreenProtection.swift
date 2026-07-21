@@ -57,9 +57,8 @@ final class ScreenProtection: ObservableObject {
     }
 
     private func refreshCaptureState() {
-        let scenes = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-        let screens = scenes.compactMap { $0.keyWindow?.screen }
-        isCapturing = screens.contains { $0.isCaptured }
+        // UIScreen.screens is deprecated but still functional; the replacement
+        // (per-scene keyWindow.screen) is more code for the same signal.
+        isCapturing = UIScreen.screens.contains { $0.isCaptured }
     }
 }
