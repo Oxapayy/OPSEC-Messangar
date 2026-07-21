@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var tor = TorManager.shared
     @State private var showSignOut = false
 
     var body: some View {
@@ -11,7 +12,7 @@ struct SettingsView: View {
                 VStack(spacing: 20) {
                     header
                     section("Network") {
-                        row("Tor", value: appState.torStatus.rawValue.capitalized,
+                        row("Tor", value: tor.status.rawValue.capitalized,
                             valueColor: torColor)
                         row("Backend host", value: BackendConfig.onionHost, mono: true)
                     }
@@ -102,7 +103,7 @@ struct SettingsView: View {
     }
 
     private var torColor: Color {
-        switch appState.torStatus {
+        switch tor.status {
         case .connected: return .green
         case .starting:  return .orange
         case .failed:    return .red

@@ -5,7 +5,6 @@ import Tor
 
 /// Bootstraps an embedded Tor client and exposes a local SOCKS5 proxy that
 /// URLSession can route through. Uses iCepa/Tor.framework under the hood.
-@MainActor
 final class TorManager: ObservableObject {
     static let shared = TorManager()
 
@@ -37,25 +36,32 @@ final class TorManager: ObservableObject {
     func start() async {
         #if canImport(Tor)
         guard status == .disabled || status == .failed else { return }
-        status = .starting
-        lastError = nil
+        await set(status: .starting, error: nil)
 
         do {
             try await bootstrap()
         } catch {
-            lastError = error.localizedDescription
-            status = .failed
+            await set(status: .failed, error: error.localizedDescription)
         }
         #else
-        status = .disabled
-        lastError = "Tor.framework not linked in this build."
+        await set(status: .disabled, error: "Tor.framework not linked in this build.")
         #endif
+    }
+
+    private func set(status: Status, error: String?) async {
+        await MainActor.run {
+            self.status = status
+            self.lastError = error
+        }
+    }
+
+    private func set(progress: Int) async {
+        await MainActor.run { self.progress = progress }
     }
 
     #if canImport(Tor)
 
     private func bootstrap() async throws {
-        // Data directory under Caches — Tor writes here.
         let caches = FileManager.default.urls(for: .cachesDirectory,
                                               in: .userDomainMask).first!
         let dataDir = caches.appendingPathComponent("tor", isDirectory: true)
@@ -84,10 +90,9 @@ final class TorManager: ObservableObject {
         self.thread = t
         t.start()
 
-        // Wait a moment for tor to open its ports + write the cookie.
         for _ in 0..<50 {
             if FileManager.default.fileExists(atPath: cookiePath) { break }
-            try await Task.sleep(nanoseconds: 200_000_000) // 200 ms
+            try await Task.sleep(nanoseconds: 200_000_000)
         }
         guard let cookie = try? Data(contentsOf: URL(fileURLWithPath: cookiePath)) else {
             throw NSError(domain: "TorManager", code: -1,
@@ -117,18 +122,17 @@ final class TorManager: ObservableObject {
             }
         }
 
-        status = .bootstrapping
+        await set(status: .bootstrapping, error: nil)
 
-        // Subscribe to bootstrap progress; complete when we hit 100.
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             var finished = false
             let completion: (String) -> Void = { [weak self] progressStr in
-                Task { @MainActor [weak self] in
-                    if let p = Int(progressStr) { self?.progress = p }
-                    if progressStr == "100" && !finished {
-                        finished = true
-                        cont.resume()
-                    }
+                if let p = Int(progressStr) {
+                    Task { await self?.set(progress: p) }
+                }
+                if progressStr == "100" && !finished {
+                    finished = true
+                    cont.resume()
                 }
             }
 
@@ -141,7 +145,6 @@ final class TorManager: ObservableObject {
                 return true
             })
 
-            // Also poll once in case we missed the event.
             ctl.getInfoForKeys(["status/bootstrap-phase"]) { values in
                 if let phase = values.first,
                    let range = phase.range(of: "PROGRESS=") {
@@ -151,7 +154,6 @@ final class TorManager: ObservableObject {
                 }
             }
 
-            // Hard timeout after 90 seconds.
             Task {
                 try? await Task.sleep(nanoseconds: 90_000_000_000)
                 if !finished {
@@ -163,16 +165,13 @@ final class TorManager: ObservableObject {
             }
         }
 
-        status = .connected
+        await set(status: .connected, error: nil)
     }
 
     #endif
 
     // MARK: - URLSession
 
-    /// URLSession routed through the local SOCKS5 proxy when Tor is up.
-    /// Falls back to a plain session otherwise (which will fail for .onion
-    /// hostnames — by design).
     func urlSession() -> URLSession {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 60
