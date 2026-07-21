@@ -1,0 +1,95 @@
+name: iOS unsigned .ipa
+
+# Builds an unsigned .ipa on GitHub's hosted macOS runner and uploads it as
+# a workflow artifact you can download. Since it's unsigned, you can only
+# install it on a real device after re-signing (with your Apple Developer
+# cert via Xcode's "Sign to Run Locally", `codesign`, or a tool like
+# AltStore / Sideloadly). The Simulator can run the .app directly.
+
+on:
+  workflow_dispatch: {}   # run manually from the Actions tab
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-unsigned-ipa.yml"
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build (unsigned) archive
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project OPSECMessenger.xcodeproj \
+            -scheme OPSECMessenger \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/OPSECMessenger.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+
+      - name: Package .ipa (unsigned)
+        working-directory: ios
+        run: |
+          # An .ipa is just a zip with Payload/YourApp.app at the root.
+          rm -rf build/Payload
+          mkdir build/Payload
+          cp -R build/OPSECMessenger.xcarchive/Products/Applications/OPSECMessenger.app \
+                build/Payload/
+          cd build
+          zip -qry OPSECMessenger-unsigned.ipa Payload
+          ls -lh OPSECMessenger-unsigned.ipa
+
+      - name: Also build a Simulator .app (runs immediately in the Simulator)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project OPSECMessenger.xcodeproj \
+            -scheme OPSECMessenger \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/sim \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          cd build/sim/Build/Products/Debug-iphonesimulator
+          zip -qry ../../../../OPSECMessenger-simulator.app.zip OPSECMessenger.app
+
+      - name: Upload .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPSECMessenger-unsigned-ipa
+          path: ios/build/OPSECMessenger-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload Simulator .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPSECMessenger-simulator-app
+          path: ios/build/OPSECMessenger-simulator.app.zip
+          if-no-files-found: error
