@@ -153,7 +153,11 @@ final class TorManager: ObservableObject {
         cfg.timeoutIntervalForRequest = 60
         cfg.timeoutIntervalForResource = 120
         if isEnabled {
+            // Same shape as the official Tor.framework sample: explicit
+            // proxy type + SOCKS5, so CFNetwork passes the .onion hostname
+            // to Tor instead of trying (and failing) to resolve it itself.
             cfg.connectionProxyDictionary = [
+                kCFProxyTypeKey as String: kCFProxyTypeSOCKS,
                 kCFStreamPropertySOCKSProxyHost as String: socksHost,
                 kCFStreamPropertySOCKSProxyPort as String: Int(socksPort),
                 kCFStreamPropertySOCKSVersion as String: kCFStreamSocketSOCKSVersion5,
