@@ -25,6 +25,21 @@ final class TorManager: ObservableObject {
     private var controller: TorController?
     private var config: TorConfiguration?
     #endif
+    private var logPath: String?
+
+    /// Builds an error whose message carries the tail of Tor's own log, so
+    /// on-device failures are diagnosable from the splash screen.
+    private func torError(_ message: String, code: Int) -> NSError {
+        var full = message
+        if let logPath,
+           let log = try? String(contentsOfFile: logPath, encoding: .utf8),
+           !log.isEmpty {
+            let tail = log.split(separator: "\n").suffix(4).joined(separator: "\n")
+            if !tail.isEmpty { full += "\n\n" + tail }
+        }
+        return NSError(domain: "TorManager", code: code,
+                       userInfo: [NSLocalizedDescriptionKey: full])
+    }
 
     /// True once bootstrap hit 100% and SOCKS is ready.
     var isEnabled: Bool { status == .connected }
@@ -71,6 +86,11 @@ final class TorManager: ObservableObject {
                                                ofItemAtPath: dataDir.path)
 
         let cookiePath = dataDir.appendingPathComponent("control_auth_cookie").path
+        // Log to a file so we can surface Tor's own diagnostics in the UI when
+        // something goes wrong on-device.
+        let logPath = dataDir.appendingPathComponent("tor.log").path
+        try? FileManager.default.removeItem(atPath: logPath)
+        self.logPath = logPath
         // NOTE: a unix control socket path in the app container blows past the
         // 104-char sockaddr_un limit on iOS, so Tor never opens the control
         // channel. Use a TCP control port on localhost instead.
@@ -83,7 +103,7 @@ final class TorManager: ObservableObject {
             "--CookieAuthFile", cookiePath,
             "--AvoidDiskWrites", "1",
             "--ClientOnly", "1",
-            "--Log", "notice stdout",
+            "--Log", "notice file \(logPath)",
         ]
         self.config = cfg
 
@@ -103,8 +123,7 @@ final class TorManager: ObservableObject {
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         guard let cookie else {
-            throw NSError(domain: "TorManager", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "control cookie not readable"])
+            throw torError("control cookie not readable", code: -1)
         }
 
         let ctl = TorController(socketHost: socksHost, port: controlPort)
@@ -124,8 +143,8 @@ final class TorManager: ObservableObject {
             }
         }
         guard connected else {
-            throw lastError ?? NSError(domain: "TorManager", code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "control connect failed"])
+            let why = (lastError?.localizedDescription).map { " (\($0))" } ?? ""
+            throw torError("control connect failed\(why)", code: -4)
         }
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
@@ -175,9 +194,7 @@ final class TorManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 90_000_000_000)
                 if !finished {
                     finished = true
-                    cont.resume(throwing: NSError(
-                        domain: "TorManager", code: -3,
-                        userInfo: [NSLocalizedDescriptionKey: "bootstrap timeout"]))
+                    cont.resume(throwing: self.torError("bootstrap timeout", code: -3))
                 }
             }
         }
