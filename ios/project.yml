@@ -20,11 +20,15 @@ targets:
       - path: OPSECMessenger
     resources:
       - path: OPSECMessenger/Resources
-    info:
-      path: OPSECMessenger/Resources/Info.plist
+    # IMPORTANT: no `info:` block here. XcodeGen's `info.path` REGENERATES
+    # the plist on every `xcodegen generate`, silently overwriting our
+    # handcrafted Info.plist (ATS policy, launch storyboard, usage strings).
+    # INFOPLIST_FILE makes Xcode consume the checked-in file as-is.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.opsec.messenger
         TARGETED_DEVICE_FAMILY: "1,2"
         OTHER_LDFLAGS: "-ObjC"
+        INFOPLIST_FILE: OPSECMessenger/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
     # Tor.framework is pulled via CocoaPods — see ios/Podfile.
