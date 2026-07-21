@@ -10,7 +10,12 @@ struct UsernameView: View {
     @State private var status: Status = .idle
     @State private var errorText: String?
 
-    enum Status { case idle, available, taken, invalid }
+    enum Status { case idle, checking, available, taken, invalid }
+
+    private var isFormatValid: Bool {
+        username.range(of: "^[a-z0-9_]{3,20}$",
+                       options: .regularExpression) != nil
+    }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -31,8 +36,18 @@ struct UsernameView: View {
                 TextField("username", text: $username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
                     .foregroundStyle(Theme.textPrimary)
-                    .onChange(of: username) { _, new in validate(new) }
+                    .onChange(of: username) { _, new in
+                        // Normalize: lowercase, [a-z0-9_] only. Stray keyboard
+                        // characters (trailing spaces etc.) silently locked
+                        // the form before.
+                        let cleaned = new.lowercased().filter {
+                            ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "_"
+                        }
+                        if cleaned != new { username = cleaned; return }
+                        validate(cleaned)
+                    }
             }
             .padding()
             .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
@@ -50,8 +65,11 @@ struct UsernameView: View {
                 else { Text("Create account") }
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(registering || status != .available)
-            .opacity(status == .available ? 1 : 0.5)
+            // Gate only on the format. Availability is advisory — the
+            // backend enforces uniqueness at register time anyway, and a
+            // slow/failed Tor round-trip must not lock the user out here.
+            .disabled(registering || !isFormatValid || status == .taken)
+            .opacity((isFormatValid && status != .taken) ? 1 : 0.5)
 
             if let errorText {
                 Text(errorText).foregroundStyle(.red).font(.footnote)
@@ -68,13 +86,19 @@ struct UsernameView: View {
         switch status {
         case .available: return Theme.cyan
         case .taken, .invalid: return .red.opacity(0.7)
-        case .idle: return Theme.divider
+        case .idle, .checking: return Theme.divider
         }
     }
 
     @ViewBuilder private var statusLine: some View {
         switch status {
         case .idle: EmptyView()
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().scaleEffect(0.8)
+                Text("Checking availability…")
+            }
+            .foregroundStyle(Theme.textSecondary).font(.footnote)
         case .invalid: Label("3–20 chars, a–z 0–9 _", systemImage: "xmark.circle")
                 .foregroundStyle(.orange).font(.footnote)
         case .available: Label("Available", systemImage: "checkmark.circle.fill")
@@ -85,9 +109,9 @@ struct UsernameView: View {
     }
 
     private func validate(_ s: String) {
-        let pattern = "^[a-z0-9_]{3,20}$"
-        let ok = s.range(of: pattern, options: .regularExpression) != nil
-        guard ok else { status = s.isEmpty ? .idle : .invalid; return }
+        errorText = nil
+        guard isFormatValid else { status = s.isEmpty ? .idle : .invalid; return }
+        status = .checking
         Task { await checkAvailability(s) }
     }
 
@@ -96,11 +120,11 @@ struct UsernameView: View {
             let available = try await APIClient.shared.checkUsernameAvailable(s)
             if username == s { status = available ? .available : .taken }
         } catch {
-            // Surface the connection problem instead of pretending the
-            // username is free — otherwise Register would fail silently later.
+            // Advisory only: report the hiccup but leave the button usable —
+            // register() gets the authoritative answer from the backend.
             if username == s {
                 status = .idle
-                errorText = "Backend unreachable: \(error.localizedDescription)"
+                errorText = "Availability check failed: \(error.localizedDescription)"
             }
         }
     }
