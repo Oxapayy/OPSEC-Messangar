@@ -9,21 +9,23 @@ name: iOS unsigned .ipa
 on:
   workflow_dispatch: {}   # run manually from the Actions tab
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths:
       - "ios/**"
       - ".github/workflows/ios-unsigned-ipa.yml"
 
 jobs:
   build:
-    runs-on: macos-14
-    timeout-minutes: 25
+    runs-on: macos-15
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      - name: Select newest available Xcode
+        run: |
+          ls /Applications | grep -i "^Xcode" || true
+          sudo xcode-select -s /Applications/Xcode.app
 
       - name: Show toolchain versions
         run: |
