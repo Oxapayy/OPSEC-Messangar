@@ -152,16 +152,26 @@ func (s *Server) handleAddContact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	id, err := strconv.ParseInt(req.UserID, 10, 64)
+	// Clients only ever see the public numeric ID (that's what profile.id
+	// carries), so resolve it to the internal row id before storing —
+	// contacts.contact_id references accounts(id).
+	numeric, err := strconv.ParseUint(req.UserID, 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad user_id")
 		return
 	}
-	if _, err := s.DB.AccountByID(r.Context(), id); err != nil {
+	var contactID int64
+	err = s.DB.QueryRowContext(r.Context(),
+		`SELECT id FROM accounts WHERE numeric_id = ?`, numeric).Scan(&contactID)
+	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "no such user")
 		return
 	}
-	if err := s.DB.AddContact(r.Context(), accountID(r), id); err != nil {
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	if err := s.DB.AddContact(r.Context(), accountID(r), contactID); err != nil {
 		writeError(w, http.StatusInternalServerError, "db")
 		return
 	}
