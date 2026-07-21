@@ -12,11 +12,6 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
 
-packages:
-  Tor:
-    url: https://github.com/tladesignz/Tor.framework.git
-    branch: master
-
 targets:
   OPSECMessenger:
     type: application
@@ -32,6 +27,4 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.opsec.messenger
         TARGETED_DEVICE_FAMILY: "1,2"
         OTHER_LDFLAGS: "-ObjC"
-    dependencies:
-      - package: Tor
-        product: Tor
+    # Tor.framework is pulled via CocoaPods — see ios/Podfile.

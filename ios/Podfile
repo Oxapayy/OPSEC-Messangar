@@ -1,0 +1,19 @@
+platform :ios, '17.0'
+use_frameworks!
+inhibit_all_warnings!
+
+target 'OPSECMessenger' do
+  pod 'Tor', '~> 408.16'
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |c|
+      c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+      c.build_settings['ENABLE_BITCODE'] = 'NO'
+      # Match unsigned CI archive so re-signing later stays possible.
+      c.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      c.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
+    end
+  end
+end
