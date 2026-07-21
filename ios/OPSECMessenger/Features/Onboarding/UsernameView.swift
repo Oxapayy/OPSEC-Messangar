@@ -96,7 +96,12 @@ struct UsernameView: View {
             let available = try await APIClient.shared.checkUsernameAvailable(s)
             if username == s { status = available ? .available : .taken }
         } catch {
-            if username == s { status = .available }
+            // Surface the connection problem instead of pretending the
+            // username is free — otherwise Register would fail silently later.
+            if username == s {
+                status = .idle
+                errorText = "Backend unreachable: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -105,19 +110,18 @@ struct UsernameView: View {
         defer { registering = false }
         errorText = nil
         let authKey = AccountCodeGenerator.deriveAuthKey(from: code)
-        let token: String
         do {
-            token = try await APIClient.shared.register(authKey: authKey,
-                                                        numericId: numericId)
-        } catch {
-            token = "offline-" + UUID().uuidString
-        }
-        APIClient.shared.setSessionToken(token)
-        do { try await APIClient.shared.claimUsername(username) } catch {}
+            let token = try await APIClient.shared.register(authKey: authKey,
+                                                            numericId: numericId)
+            APIClient.shared.setSessionToken(token)
+            try await APIClient.shared.claimUsername(username)
 
-        let acct = Account(numericId: numericId, authKey: authKey,
-                           username: username, sessionToken: token,
-                           createdAt: Date())
-        await appState.completeOnboarding(acct)
+            let acct = Account(numericId: numericId, authKey: authKey,
+                               username: username, sessionToken: token,
+                               createdAt: Date())
+            await appState.completeOnboarding(acct)
+        } catch {
+            errorText = "Registration failed: \(error.localizedDescription)"
+        }
     }
 }
