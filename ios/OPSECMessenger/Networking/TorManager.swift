@@ -71,17 +71,16 @@ final class TorManager: ObservableObject {
                                                ofItemAtPath: dataDir.path)
 
         let cookiePath = dataDir.appendingPathComponent("control_auth_cookie").path
-        // Control over a unix domain socket is more reliable on iOS than TCP.
-        let controlSocket = dataDir.appendingPathComponent("control.sock")
-
+        // NOTE: a unix control socket path in the app container blows past the
+        // 104-char sockaddr_un limit on iOS, so Tor never opens the control
+        // channel. Use a TCP control port on localhost instead.
         let cfg = TorConfiguration()
         cfg.cookieAuthentication = true
         cfg.dataDirectory = dataDir
-        cfg.controlSocket = controlSocket
         cfg.arguments = [
             "--SocksPort", "\(socksHost):\(socksPort)",
+            "--ControlPort", "\(socksHost):\(controlPort)",
             "--CookieAuthFile", cookiePath,
-            "--DataDirectory", dataDir.path,
             "--AvoidDiskWrites", "1",
             "--ClientOnly", "1",
             "--Log", "notice stdout",
@@ -92,21 +91,26 @@ final class TorManager: ObservableObject {
         self.thread = t
         t.start()
 
-        // Wait for both the control socket AND the cookie to exist.
-        for _ in 0..<100 {
-            if FileManager.default.fileExists(atPath: controlSocket.path),
-               FileManager.default.fileExists(atPath: cookiePath) { break }
+        // Wait for the cookie file — its existence means Tor started and the
+        // control channel is coming up.
+        var cookie: Data?
+        for _ in 0..<150 {
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: cookiePath)),
+               !data.isEmpty {
+                cookie = data
+                break
+            }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
-        guard let cookie = try? Data(contentsOf: URL(fileURLWithPath: cookiePath)) else {
+        guard let cookie else {
             throw NSError(domain: "TorManager", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "control cookie not readable"])
         }
 
-        let ctl = TorController(socketURL: controlSocket)
+        let ctl = TorController(socketHost: socksHost, port: controlPort)
         self.controller = ctl
 
-        // Retry connect — the socket file can exist a beat before it accepts.
+        // Retry connect — the control port opens a beat after the cookie lands.
         var connected = false
         var lastError: Error?
         for _ in 0..<40 {
