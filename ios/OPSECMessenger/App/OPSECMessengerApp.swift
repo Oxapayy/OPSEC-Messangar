@@ -38,6 +38,23 @@ struct RootView: View {
             case .ready: MainTabView()
             }
         }
+        // Tiny build stamp so we can always confirm which binary is running.
+        .overlay(alignment: .bottom) {
+            Text("build \(AppInfo.version)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.28))
+                .padding(.bottom, 2)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+enum AppInfo {
+    static var version: String {
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(v) (\(b))"
     }
 }
 
