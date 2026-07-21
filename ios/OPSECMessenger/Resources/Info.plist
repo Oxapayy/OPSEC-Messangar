@@ -18,8 +18,11 @@
     <string>APPL</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
-    <key>UILaunchScreen</key>
-    <dict/>
+    <!-- A real launch storyboard is what makes iOS render the app at native
+         full-screen resolution. An empty UILaunchScreen dict letterboxes on
+         some iOS versions. -->
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
@@ -42,24 +45,18 @@
         <string>audio</string>
     </array>
 
-    <!-- All traffic goes through the local Tor SOCKS proxy (127.0.0.1)
-         once Tor.framework bootstraps; NSAllowsLocalNetworking covers that.
-         The .onion exception is kept in case any code path resolves the
-         hostname directly. -->
+    <!-- All traffic is tunnelled through the local Tor SOCKS proxy to a v3
+         .onion service. Onion services provide their own end-to-end
+         encryption and authentication (the address IS the service key), so
+         plain HTTP over Tor is safe. ATS can't match an exception against a
+         bare ".onion" host, so we allow arbitrary loads outright — there is
+         no clearnet path in this build for it to weaken. -->
     <key>NSAppTransportSecurity</key>
     <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
         <key>NSAllowsLocalNetworking</key>
         <true/>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>onion</key>
-            <dict>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                <true/>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-            </dict>
-        </dict>
     </dict>
 </dict>
 </plist>

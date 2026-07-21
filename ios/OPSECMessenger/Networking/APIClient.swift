@@ -22,8 +22,18 @@ enum APIError: Error, LocalizedError {
 final class APIClient {
     static let shared = APIClient()
 
-    /// Cached session so we're not building a new URLSession per request.
-    private lazy var session: URLSession = TorManager.shared.urlSession()
+    /// Cached session, rebuilt whenever Tor's proxy state flips so we never
+    /// keep a direct (proxy-less) session after Tor finishes bootstrapping.
+    private var _session: URLSession?
+    private var _sessionProxied = false
+    private var session: URLSession {
+        let proxied = TorManager.shared.isEnabled
+        if let s = _session, proxied == _sessionProxied { return s }
+        let s = TorManager.shared.urlSession()
+        _session = s
+        _sessionProxied = proxied
+        return s
+    }
     private var sessionToken: String?
 
     func setSessionToken(_ token: String?) { self.sessionToken = token }
