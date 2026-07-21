@@ -10,6 +10,10 @@ actor WebSocketClient {
 
     var onEvent: (@Sendable (SocketEvent) -> Void)?
 
+    func setOnEvent(_ handler: @escaping @Sendable (SocketEvent) -> Void) {
+        onEvent = handler
+    }
+
     func connect(sessionToken: String) async {
         var req = URLRequest(url: BackendConfig.webSocketURL)
         req.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
@@ -61,6 +65,7 @@ actor WebSocketClient {
 
 enum SocketEvent: Codable {
     case message(MessageEnvelope)
+    case contactRequest(UserProfile)
     case typing(conversationId: String, userId: String)
     case callOffer(from: String, sdp: String, callId: String)
     case callAnswer(callId: String, sdp: String)
@@ -69,7 +74,7 @@ enum SocketEvent: Codable {
 
     // Simple discriminator-based coding.
     enum Kind: String, Codable {
-        case message, typing, callOffer, callAnswer, callEnd, presence
+        case message, contactRequest, typing, callOffer, callAnswer, callEnd, presence
     }
     private enum CodingKeys: String, CodingKey { case kind, payload }
 
@@ -78,6 +83,8 @@ enum SocketEvent: Codable {
         let kind = try c.decode(Kind.self, forKey: .kind)
         switch kind {
         case .message:    self = .message(try c.decode(MessageEnvelope.self, forKey: .payload))
+        case .contactRequest:
+            self = .contactRequest(try c.decode(UserProfile.self, forKey: .payload))
         case .typing:
             let p = try c.decode([String: String].self, forKey: .payload)
             self = .typing(conversationId: p["conversationId"] ?? "",
@@ -106,6 +113,9 @@ enum SocketEvent: Codable {
         case .message(let m):
             try c.encode(Kind.message, forKey: .kind)
             try c.encode(m, forKey: .payload)
+        case .contactRequest(let p):
+            try c.encode(Kind.contactRequest, forKey: .kind)
+            try c.encode(p, forKey: .payload)
         case .typing(let cid, let uid):
             try c.encode(Kind.typing, forKey: .kind)
             try c.encode(["conversationId": cid, "userId": uid], forKey: .payload)
@@ -129,6 +139,7 @@ struct MessageEnvelope: Codable, Identifiable {
     let id: String
     let conversationId: String
     let senderId: String
+    let senderUsername: String?
     let type: MessageType
     /// Opaque ciphertext (base64). Decrypted client-side.
     let payload: String

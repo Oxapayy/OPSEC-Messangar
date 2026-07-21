@@ -33,6 +33,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /v1/users/lookup", s.authed(s.handleLookupUser))
 	mux.Handle("POST /v1/contacts", s.authed(s.handleAddContact))
 	mux.Handle("GET /v1/contacts", s.authed(s.handleListContacts))
+	mux.Handle("GET /v1/contacts/requests", s.authed(s.handleListContactRequests))
 	mux.Handle("POST /v1/messages", s.authed(s.handleSendMessage))
 	mux.Handle("POST /v1/attachments", s.authed(s.handleRequestAttachment))
 	mux.Handle("PUT /v1/attachments/{id}", s.authed(s.handleUploadAttachment))

@@ -226,6 +226,34 @@ func (db *DB) AddContact(ctx context.Context, owner, contact int64) error {
 	return err
 }
 
+// ListContactRequests returns accounts that added `me` as a contact while
+// `me` has not (yet) added them back — the incoming friend-request inbox.
+func (db *DB) ListContactRequests(ctx context.Context, me int64) ([]*Account, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at
+		 FROM accounts a JOIN contacts c ON c.owner_id = a.id
+		 WHERE c.contact_id = ?
+		   AND NOT EXISTS (SELECT 1 FROM contacts c2
+		                   WHERE c2.owner_id = ? AND c2.contact_id = a.id)
+		 ORDER BY c.added_at DESC`, me, me)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Account
+	for rows.Next() {
+		var a Account
+		var created string
+		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username,
+			&a.PublicKey, &created); err != nil {
+			return nil, err
+		}
+		a.CreatedAt, _ = time.Parse(time.RFC3339, created)
+		out = append(out, &a)
+	}
+	return out, nil
+}
+
 func (db *DB) ListContacts(ctx context.Context, owner int64) ([]*Account, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at
@@ -255,6 +283,7 @@ type Envelope struct {
 	ConversationID string    `json:"conversation_id"`
 	SenderID       int64     `json:"-"`
 	SenderNumeric  uint64    `json:"sender_id,string"`
+	SenderUsername string    `json:"sender_username"`
 	Type           string    `json:"type"`
 	Payload        string    `json:"payload"`
 	SentAt         time.Time `json:"sent_at"`
@@ -272,7 +301,8 @@ func (db *DB) StoreEnvelope(ctx context.Context, e *Envelope, recipientID int64)
 
 func (db *DB) UndeliveredFor(ctx context.Context, recipientID int64) ([]*Envelope, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT e.id, e.conversation_id, e.sender_id, a.numeric_id, e.type, e.payload, e.sent_at
+		`SELECT e.id, e.conversation_id, e.sender_id, a.numeric_id,
+		        COALESCE(a.username, ''), e.type, e.payload, e.sent_at
 		 FROM envelopes e JOIN accounts a ON a.id = e.sender_id
 		 WHERE e.recipient_id = ? AND e.delivered_at IS NULL
 		 ORDER BY e.sent_at ASC LIMIT 500`, recipientID)
@@ -285,7 +315,7 @@ func (db *DB) UndeliveredFor(ctx context.Context, recipientID int64) ([]*Envelop
 		var e Envelope
 		var sent string
 		if err := rows.Scan(&e.ID, &e.ConversationID, &e.SenderID, &e.SenderNumeric,
-			&e.Type, &e.Payload, &sent); err != nil {
+			&e.SenderUsername, &e.Type, &e.Payload, &sent); err != nil {
 			return nil, err
 		}
 		e.SentAt, _ = time.Parse(time.RFC3339Nano, sent)

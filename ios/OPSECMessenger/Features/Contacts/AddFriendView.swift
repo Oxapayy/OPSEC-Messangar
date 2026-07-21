@@ -2,11 +2,13 @@ import SwiftUI
 
 struct AddFriendView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appState: AppState
     @State private var username = ""
     @State private var result: UserProfile?
     @State private var searching = false
     @State private var errorText: String?
     @State private var added = false
+    @State private var openChat: Conversation?
 
     var body: some View {
         ZStack {
@@ -53,6 +55,14 @@ struct AddFriendView: View {
                                 .font(.caption).foregroundStyle(Theme.textSecondary)
                         }
                         Spacer()
+                        // Message without adding — lands in the recipient's
+                        // "Message requests" folder until they add you back.
+                        Button { message(result) } label: {
+                            Image(systemName: "bubble.left.fill")
+                                .foregroundStyle(Theme.cyan).font(.title3)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 6)
                         Button(added ? "Added" : "Add") { Task { await add(result) } }
                             .buttonStyle(SecondaryButtonStyle())
                             .frame(width: 100)
@@ -74,6 +84,12 @@ struct AddFriendView: View {
         .navigationTitle("Add friend")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .navigationDestination(item: $openChat) { c in ChatView(conversation: c) }
+    }
+
+    private func message(_ user: UserProfile) {
+        guard let me = appState.account?.numericId else { return }
+        openChat = LocalDatabase.shared.openConversation(with: user, myNumericId: me)
     }
 
     private func search() async {
@@ -84,7 +100,12 @@ struct AddFriendView: View {
     }
 
     private func add(_ user: UserProfile) async {
-        do { try await APIClient.shared.addContact(userId: user.id); added = true }
-        catch { errorText = "Could not add contact." }
+        do {
+            try await APIClient.shared.addContact(userId: user.id)
+            added = true
+            await LocalDatabase.shared.refreshContacts()
+        } catch {
+            errorText = "Could not add contact: \(error.localizedDescription)"
+        }
     }
 }

@@ -77,6 +77,12 @@ final class APIClient {
         return resp.contacts
     }
 
+    /// People who added me that I haven't added back — the friend-request inbox.
+    func listContactRequests() async throws -> [UserProfile] {
+        let resp: RequestsResponse = try await get("/v1/contacts/requests", authed: true)
+        return resp.requests
+    }
+
     // MARK: - Messages
 
     func sendMessage(conversationId: String, recipientNumericId: UInt64,
@@ -186,7 +192,19 @@ extension JSONDecoder {
     static let snake: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
-        d.dateDecodingStrategy = .iso8601
+        // Tolerant ISO8601: accepts timestamps with or without fractional
+        // seconds (Go emits fractions; .iso8601 alone rejects them).
+        d.dateDecodingStrategy = .custom { dec in
+            let s = try dec.singleValueContainer().decode(String.self)
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = f.date(from: s) { return date }
+            f.formatOptions = [.withInternetDateTime]
+            if let date = f.date(from: s) { return date }
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: dec.codingPath,
+                debugDescription: "unparseable date: \(s)"))
+        }
         return d
     }()
 }
@@ -199,5 +217,6 @@ struct RegisterResponse: Decodable { let sessionToken: String }
 struct LoginResponse: Decodable { let sessionToken: String; let profile: UserProfile }
 struct AvailabilityResponse: Decodable { let available: Bool }
 struct ContactsResponse: Decodable { let contacts: [UserProfile] }
+struct RequestsResponse: Decodable { let requests: [UserProfile] }
 struct AttachmentUploadTicket: Decodable { let uploadUrl: String; let fileId: String }
 struct CallSession: Decodable { let callId: String; let sdpAnswer: String? }

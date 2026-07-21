@@ -1,46 +1,33 @@
 import SwiftUI
 
 struct ContactsView: View {
-    @State private var contacts: [UserProfile] = []
+    @EnvironmentObject var appState: AppState
+    @StateObject private var db = LocalDatabase.shared
     @State private var loading = true
+    @State private var openChat: Conversation?
 
     var body: some View {
         ZStack {
             Theme.backgroundGradient.ignoresSafeArea()
-            if loading { ProgressView().tint(Theme.cyan) }
-            else if contacts.isEmpty {
-                VStack(spacing: 14) {
-                    BrandLogo(size: 84)
-                    Text("No contacts yet")
-                        .font(.headline).foregroundStyle(Theme.textPrimary)
-                    NavigationLink { AddFriendView() } label: {
-                        Text("Add friend")
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .frame(width: 200)
-                }
+            if loading && db.contacts.isEmpty && db.contactRequests.isEmpty {
+                ProgressView().tint(Theme.cyan)
+            } else if db.contacts.isEmpty && db.contactRequests.isEmpty {
+                emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(contacts) { c in
-                            HStack(spacing: 12) {
-                                Circle().fill(Theme.accentGradient)
-                                    .frame(width: 40, height: 40)
-                                    .overlay(Text(String(c.username.prefix(1)).uppercased())
-                                        .foregroundStyle(Theme.onAccent).font(.headline))
-                                VStack(alignment: .leading) {
-                                    Text("@" + c.username)
-                                        .foregroundStyle(Theme.textPrimary)
-                                    Text(String(c.numericId))
-                                        .font(.caption).foregroundStyle(Theme.textSecondary)
-                                }
-                                Spacer()
-                            }
-                            .padding(12)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+                        if !db.contactRequests.isEmpty {
+                            sectionHeader("Friend requests")
+                            ForEach(db.contactRequests) { r in requestRow(r) }
                         }
-                    }.padding(.horizontal, 12).padding(.top, 8)
+                        if !db.contacts.isEmpty {
+                            sectionHeader("Contacts")
+                            ForEach(db.contacts) { c in contactRow(c) }
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.top, 8)
                 }
+                .refreshable { await db.refreshContacts() }
             }
         }
         .navigationTitle("Contacts")
@@ -52,12 +39,96 @@ struct ContactsView: View {
                 }
             }
         }
-        .task { await reload() }
+        .navigationDestination(item: $openChat) { c in ChatView(conversation: c) }
+        .task {
+            loading = true
+            await db.refreshContacts()
+            loading = false
+        }
     }
 
-    private func reload() async {
-        loading = true
-        defer { loading = false }
-        contacts = (try? await APIClient.shared.listContacts()) ?? []
+    // MARK: - Rows
+
+    private func contactRow(_ c: UserProfile) -> some View {
+        HStack(spacing: 12) {
+            avatar(c)
+            VStack(alignment: .leading) {
+                Text("@" + c.username).foregroundStyle(Theme.textPrimary)
+                Text(String(c.numericId))
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            }
+            Spacer()
+            Button { startChat(with: c) } label: {
+                Image(systemName: "bubble.left.fill")
+                    .foregroundStyle(Theme.cyan).font(.title3)
+            }
+            .buttonStyle(.plain)
+            NavigationLink { CallView(peer: c) } label: {
+                Image(systemName: "phone.fill")
+                    .foregroundStyle(Theme.cyan).font(.title3)
+                    .padding(.leading, 6)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func requestRow(_ r: UserProfile) -> some View {
+        HStack(spacing: 12) {
+            avatar(r)
+            VStack(alignment: .leading) {
+                Text("@" + r.username).foregroundStyle(Theme.textPrimary)
+                Text("wants to connect")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            }
+            Spacer()
+            Button("Accept") {
+                Task {
+                    try? await APIClient.shared.addContact(userId: r.id)
+                    await db.refreshContacts()
+                }
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .frame(width: 96)
+        }
+        .padding(12)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14)
+            .strokeBorder(Theme.cyan.opacity(0.35), lineWidth: 1))
+    }
+
+    // MARK: - Helpers
+
+    private func startChat(with peer: UserProfile) {
+        guard let me = appState.account?.numericId else { return }
+        openChat = db.openConversation(with: peer, myNumericId: me)
+    }
+
+    private func avatar(_ p: UserProfile) -> some View {
+        Circle().fill(Theme.accentGradient)
+            .frame(width: 40, height: 40)
+            .overlay(Text(String(p.username.prefix(1)).uppercased())
+                .foregroundStyle(Theme.onAccent).font(.headline))
+    }
+
+    private func sectionHeader(_ t: String) -> some View {
+        Text(t.uppercased())
+            .font(.caption).foregroundStyle(Theme.textSecondary).tracking(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 4).padding(.top, 6)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 14) {
+            BrandLogo(size: 84)
+            Text("No contacts yet")
+                .font(.headline).foregroundStyle(Theme.textPrimary)
+            NavigationLink { AddFriendView() } label: {
+                Text("Add friend")
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .frame(width: 200)
+        }
     }
 }

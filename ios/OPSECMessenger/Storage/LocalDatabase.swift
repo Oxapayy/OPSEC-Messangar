@@ -9,6 +9,29 @@ final class LocalDatabase: ObservableObject {
 
     @Published private(set) var conversations: [Conversation] = []
     @Published private(set) var messages: [String: [Message]] = [:]  // by conversationId
+    @Published private(set) var contacts: [UserProfile] = []
+    @Published private(set) var contactRequests: [UserProfile] = []
+
+    func isContact(numericId: UInt64) -> Bool {
+        contacts.contains { $0.numericId == numericId }
+    }
+
+    /// Pulls contacts + friend requests from the backend into the store.
+    func refreshContacts() async {
+        if let c = try? await APIClient.shared.listContacts() { contacts = c }
+        if let r = try? await APIClient.shared.listContactRequests() { contactRequests = r }
+    }
+
+    /// Returns the existing 1:1 conversation with `peer`, creating (and
+    /// registering) it when this is the first contact.
+    func openConversation(with peer: UserProfile, myNumericId: UInt64) -> Conversation {
+        let id = Conversation.directId(myNumericId, peer.numericId)
+        if let existing = conversations.first(where: { $0.id == id }) { return existing }
+        let convo = Conversation(id: id, peer: peer, lastMessage: nil,
+                                 unreadCount: 0, updatedAt: Date())
+        upsert(conversation: convo)
+        return convo
+    }
 
     func upsert(conversation: Conversation) {
         if let i = conversations.firstIndex(where: { $0.id == conversation.id }) {

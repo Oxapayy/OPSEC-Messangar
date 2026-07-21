@@ -175,7 +175,26 @@ func (s *Server) handleAddContact(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "db")
 		return
 	}
+	// Tell the added user in realtime so their client can surface a
+	// friend request (best effort — offline users see it via
+	// GET /v1/contacts/requests on next launch).
+	if adder, err := s.DB.AccountByID(r.Context(), accountID(r)); err == nil {
+		s.Hub.Deliver(contactID, wsFrame{Kind: "contactRequest", Payload: acctToProfile(adder)})
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListContactRequests(w http.ResponseWriter, r *http.Request) {
+	reqs, err := s.DB.ListContactRequests(r.Context(), accountID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	out := make([]profile, 0, len(reqs))
+	for _, a := range reqs {
+		out = append(out, acctToProfile(a))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"requests": out})
 }
 
 func (s *Server) handleListContacts(w http.ResponseWriter, r *http.Request) {
@@ -232,14 +251,21 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "db")
 		return
 	}
+	senderName := ""
+	if me.Username.Valid {
+		senderName = me.Username.String
+	}
 	env := &Envelope{
 		ID:             RandomHex(12),
 		ConversationID: req.ConversationID,
 		SenderID:       me.ID,
 		SenderNumeric:  me.NumericID,
+		SenderUsername: senderName,
 		Type:           req.Type,
 		Payload:        req.Payload,
-		SentAt:         time.Now().UTC(),
+		// Second precision: Swift's ISO8601 decoder rejects Go's
+		// nanosecond timestamps.
+		SentAt:         time.Now().UTC().Truncate(time.Second),
 	}
 	if err := s.DB.StoreEnvelope(r.Context(), env, recipID); err != nil {
 		writeError(w, http.StatusInternalServerError, "store")
