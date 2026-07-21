@@ -3,42 +3,34 @@ import Foundation
 /// All backend touchpoints live here. Fill these in once the VPS is up.
 /// The rest of the app should only read from this file — never hardcode a host.
 enum BackendConfig {
-    /// The VPS's Tor .onion address (v3). Preferred transport.
+    /// The VPS's Tor .onion address (v3). Preferred transport for prod.
     static let onionHost = "c6fqkiesnximw4xzcwwtwr3hyemvnwgsxcs3ftg2456ec7sclv3vnmad.onion"
+    static let onionPort = 80
 
-    /// Optional clearnet fallback for development only.
-    static let clearnetFallback = ""
+    /// DEV-ONLY clearnet bypass — lets the iOS Simulator (which can't run
+    /// Tor.framework reliably) hit the backend directly by IP. Leave empty
+    /// for production builds.
+    static let devClearnetHost = "45.156.87.16"
+    static let devClearnetPort = 8080
 
-    /// REST API port on the backend. Hidden service maps 80 → 127.0.0.1:8080.
-    static let apiPort = 80
-
-    /// WebSocket port on the backend. Same hidden service port.
-    static let wsPort = 80
-
-    /// SHA-256 pin of the clearnet TLS cert (base64). Only used when
-    /// `clearnetFallback` is set. Leave empty to disable pinning.
-    /// TODO(backend): pin your certificate for the clearnet fallback.
-    static let pinnedCertSHA256 = ""
-
-    /// URL scheme picked based on Tor availability + fallback config.
+    /// URL used based on Tor availability + dev clearnet config.
     static var baseURL: URL {
         if TorManager.shared.isEnabled {
-            return URL(string: "http://\(onionHost):\(apiPort)")!
+            return URL(string: "http://\(onionHost):\(onionPort)")!
         }
-        if !clearnetFallback.isEmpty {
-            return URL(string: "https://\(clearnetFallback):\(apiPort)")!
+        if !devClearnetHost.isEmpty {
+            return URL(string: "http://\(devClearnetHost):\(devClearnetPort)")!
         }
-        // Nothing configured — the app will run offline against local stubs.
-        return URL(string: "http://127.0.0.1:\(apiPort)")!
+        return URL(string: "http://127.0.0.1:\(onionPort)")!
     }
 
     static var webSocketURL: URL {
         if TorManager.shared.isEnabled {
-            return URL(string: "ws://\(onionHost):\(wsPort)/ws")!
+            return URL(string: "ws://\(onionHost):\(onionPort)/ws")!
         }
-        if !clearnetFallback.isEmpty {
-            return URL(string: "wss://\(clearnetFallback):\(wsPort)/ws")!
+        if !devClearnetHost.isEmpty {
+            return URL(string: "ws://\(devClearnetHost):\(devClearnetPort)/ws")!
         }
-        return URL(string: "ws://127.0.0.1:\(wsPort)/ws")!
+        return URL(string: "ws://127.0.0.1:\(onionPort)/ws")!
     }
 }
