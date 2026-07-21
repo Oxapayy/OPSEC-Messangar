@@ -71,13 +71,15 @@ final class TorManager: ObservableObject {
                                                ofItemAtPath: dataDir.path)
 
         let cookiePath = dataDir.appendingPathComponent("control_auth_cookie").path
+        // Control over a unix domain socket is more reliable on iOS than TCP.
+        let controlSocket = dataDir.appendingPathComponent("control.sock")
 
         let cfg = TorConfiguration()
         cfg.cookieAuthentication = true
         cfg.dataDirectory = dataDir
+        cfg.controlSocket = controlSocket
         cfg.arguments = [
             "--SocksPort", "\(socksHost):\(socksPort)",
-            "--ControlPort", "\(socksHost):\(controlPort)",
             "--CookieAuthFile", cookiePath,
             "--DataDirectory", dataDir.path,
             "--AvoidDiskWrites", "1",
@@ -90,8 +92,10 @@ final class TorManager: ObservableObject {
         self.thread = t
         t.start()
 
-        for _ in 0..<50 {
-            if FileManager.default.fileExists(atPath: cookiePath) { break }
+        // Wait for both the control socket AND the cookie to exist.
+        for _ in 0..<100 {
+            if FileManager.default.fileExists(atPath: controlSocket.path),
+               FileManager.default.fileExists(atPath: cookiePath) { break }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         guard let cookie = try? Data(contentsOf: URL(fileURLWithPath: cookiePath)) else {
@@ -99,16 +103,25 @@ final class TorManager: ObservableObject {
                           userInfo: [NSLocalizedDescriptionKey: "control cookie not readable"])
         }
 
-        let ctl = TorController(socketHost: socksHost, port: controlPort)
+        let ctl = TorController(socketURL: controlSocket)
         self.controller = ctl
 
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        // Retry connect — the socket file can exist a beat before it accepts.
+        var connected = false
+        var lastError: Error?
+        for _ in 0..<40 {
             do {
                 try ctl.connect()
-                cont.resume()
+                connected = true
+                break
             } catch {
-                cont.resume(throwing: error)
+                lastError = error
+                try await Task.sleep(nanoseconds: 250_000_000)
             }
+        }
+        guard connected else {
+            throw lastError ?? NSError(domain: "TorManager", code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "control connect failed"])
         }
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
