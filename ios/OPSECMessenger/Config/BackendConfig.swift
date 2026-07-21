@@ -4,18 +4,16 @@ import Foundation
 /// The rest of the app should only read from this file — never hardcode a host.
 enum BackendConfig {
     /// The VPS's Tor .onion address (v3). Preferred transport.
-    /// TODO(backend): set this to your real .onion hostname.
-    static let onionHost = "REPLACE_WITH_YOUR_ONION_ADDRESS.onion"
+    static let onionHost = "c6fqkiesnximw4xzcwwtwr3hyemvnwgsxcs3ftg2456ec7sclv3vnmad.onion"
 
     /// Optional clearnet fallback for development only.
-    /// TODO(backend): set to your VPS clearnet host or leave empty to disable.
     static let clearnetFallback = ""
 
-    /// REST API port on the backend.
-    static let apiPort = 443
+    /// REST API port on the backend. Hidden service maps 80 → 127.0.0.1:8080.
+    static let apiPort = 80
 
-    /// WebSocket port on the backend.
-    static let wsPort = 443
+    /// WebSocket port on the backend. Same hidden service port.
+    static let wsPort = 80
 
     /// SHA-256 pin of the clearnet TLS cert (base64). Only used when
     /// `clearnetFallback` is set. Leave empty to disable pinning.
