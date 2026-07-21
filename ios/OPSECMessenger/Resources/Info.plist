@@ -4,6 +4,8 @@
 <dict>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleDisplayName</key>
+    <string>OPSEC</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleShortVersionString</key>
@@ -16,10 +18,38 @@
     <string>APPL</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>UILaunchScreen</key>
+    <dict/>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
         <false/>
+    </dict>
+
+    <!-- Camera / mic / photos usage strings -->
+    <key>NSCameraUsageDescription</key>
+    <string>Used for video calls and sending photos.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Used for voice and video calls.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Used to attach images to messages.</string>
+
+    <!-- Background modes for VoIP + push -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>voip</string>
+        <string>remote-notification</string>
+        <string>audio</string>
+    </array>
+
+    <!-- Allow HTTP transport. Backend is served over Tor (opaque to ATS)
+         and over dev clearnet on port 8080; iOS default blocks both. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
     </dict>
 </dict>
 </plist>
