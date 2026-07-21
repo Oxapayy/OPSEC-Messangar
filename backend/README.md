@@ -1,44 +1,50 @@
-# Backend (not yet implemented)
+# OPSEC-Messangar backend
 
-The VPS backend is not written yet. The iOS client talks to whatever host
-is configured in
-[`ios/OPSECMessenger/Config/BackendConfig.swift`](../ios/OPSECMessenger/Config/BackendConfig.swift).
+Small self-hostable HTTP + WebSocket backend for the iOS client. Written
+in Go (single binary, no CGO), stores everything in SQLite, and is
+designed to run behind a Tor hidden service on a Linux VPS.
 
-The wire contract the client already expects is in
-[`api-spec.md`](./api-spec.md). Implement any of it — Rust (axum, actix),
-Go (net/http, chi), or Elixir/Phoenix all fit — and the client will connect
-without further changes.
+## Build
 
-## Deployment sketch
+```
+cd backend
+go mod tidy
+make build
+```
 
-1. Ubuntu 22.04 VPS.
-2. Install `tor`, expose the service as a hidden v3 onion:
+Produces a static binary `./opsec-backend`. Run locally:
 
-   ```
-   HiddenServiceDir /var/lib/tor/opsec/
-   HiddenServicePort 443 127.0.0.1:8080
-   ```
+```
+make run
+```
 
-3. Reverse-proxy through nginx or run the app directly on 8080.
-4. Put the `.onion` hostname (`/var/lib/tor/opsec/hostname`) into
-   `BackendConfig.onionHost`.
-5. Optional clearnet fallback: only useful for dev; leave empty in production.
+Default listen address is `127.0.0.1:8080` and data lives in
+`./_data/` (override with `OPSEC_LISTEN`, `OPSEC_DATA_DIR`).
 
-## Data model (sketch)
+## Endpoints
 
-- `accounts(auth_key_hash, numeric_id, created_at)` — auth_key_hash is
-  Argon2id(auth_key). numeric_id is the value picked by the client at
-  registration and is unique.
-- `usernames(username, account_id)` — separate table so usernames are
-  claimable/releasable without rewriting accounts.
-- `contacts(owner_id, contact_id, added_at)`.
-- `envelopes(id, recipient_id, ciphertext, sent_at, delivered_at)` —
-  opaque; server never sees plaintext.
-- `apns_tokens(account_id, token, updated_at)`.
+The wire contract is documented in [`api-spec.md`](./api-spec.md). Every
+endpoint returns JSON with `snake_case` field names.
+
+## Deployment
+
+Full copy-paste-ready deployment guide, from a fresh Ubuntu install to a
+working Tor hidden service, is in [`VPS_SETUP.md`](./VPS_SETUP.md).
 
 ## Notes
 
-- Rate-limit `/v1/register` and `/v1/username/available` aggressively; both
-  are the only unauthenticated endpoints.
-- Never log the auth key or the recovery code. Log only account_id +
-  correlation IDs.
+- **Auth key hashing** — the client sends `sha256(recovery_code)` as
+  `auth_key`; the server Argon2id-hashes that value before storage
+  (`auth.go`). Login therefore needs to iterate over accounts and verify —
+  fine at self-hosted scale (a few thousand users). For millions of users,
+  add a keyed HMAC index column and look up by that first.
+- **No plaintext in envelopes** — the server relays base64 opaque
+  ciphertext blobs. It never sees message contents (once the client wires
+  up real E2EE — currently the "ciphertext" is a placeholder key).
+- **APNs** — the token is stored per account so the server can wake the
+  client. Actually sending pushes requires configuring an APNs auth key
+  and calling Apple's HTTP/2 API (not shipped here — mark
+  `TODO(backend)`).
+- **Attachments** — stored on local disk under `OPSEC_UPLOADS`. Upload
+  URLs are relative paths (`/v1/attachments/<id>`); the client uploads
+  with `PUT` and downloads with `GET`.

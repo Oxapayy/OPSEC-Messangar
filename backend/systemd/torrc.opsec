@@ -1,0 +1,16 @@
+# /etc/tor/torrc snippet for OPSEC-Messangar.
+# Copy the contents of this file into /etc/tor/torrc (or `sudo tee -a`).
+
+# Standard SOCKS port stays enabled for other tools; if you don't need it,
+# comment it out.
+SocksPort 9050
+
+# Hidden service that fronts the OPSEC backend.
+HiddenServiceDir /var/lib/tor/opsec/
+HiddenServicePort 80 127.0.0.1:8080
+
+# Serve only v3 onions.
+HiddenServiceVersion 3
+
+# Modest hardening: no client-side circuits from this Tor instance.
+ClientOnly 0

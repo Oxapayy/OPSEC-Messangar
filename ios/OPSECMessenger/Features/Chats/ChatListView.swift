@@ -43,10 +43,10 @@ struct ChatListView: View {
             Text("Add a friend by username to get started.")
                 .foregroundStyle(Theme.textSecondary).font(.footnote)
             NavigationLink { AddFriendView() } label: {
-                Text("Add friend").padding(.horizontal, 24)
+                Text("Add friend")
             }
             .buttonStyle(PrimaryButtonStyle())
-            .fixedSize()
+            .frame(width: 200)
             .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

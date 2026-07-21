@@ -54,7 +54,8 @@ struct AddFriendView: View {
                         }
                         Spacer()
                         Button(added ? "Added" : "Add") { Task { await add(result) } }
-                            .buttonStyle(SecondaryButtonStyle()).fixedSize()
+                            .buttonStyle(SecondaryButtonStyle())
+                            .frame(width: 100)
                             .disabled(added)
                     }
                     .padding(12)

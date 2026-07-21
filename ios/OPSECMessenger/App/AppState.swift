@@ -13,13 +13,13 @@ final class AppState: ObservableObject {
     let socket = WebSocketClient.shared
 
     func bootstrap() async {
-        // 1. Start Tor (no-op if package not linked).
         await TorManager.shared.start()
         torStatus = TorManager.shared.status
 
-        // 2. Load persisted account.
         if let acct = KeychainStore.shared.loadAccount() {
             account = acct
+            AppState.currentUserId = String(acct.numericId)
+            APIClient.shared.setSessionToken(acct.sessionToken)
             phase = .ready
             await socket.connect(sessionToken: acct.sessionToken)
         } else {
@@ -30,6 +30,8 @@ final class AppState: ObservableObject {
     func completeOnboarding(_ acct: Account) async {
         KeychainStore.shared.saveAccount(acct)
         account = acct
+        AppState.currentUserId = String(acct.numericId)
+        APIClient.shared.setSessionToken(acct.sessionToken)
         phase = .ready
         await socket.connect(sessionToken: acct.sessionToken)
     }
@@ -37,6 +39,8 @@ final class AppState: ObservableObject {
     func signOut() {
         KeychainStore.shared.clear()
         account = nil
+        AppState.currentUserId = nil
+        APIClient.shared.setSessionToken(nil)
         phase = .onboarding
         Task { await socket.disconnect() }
     }

@@ -1,0 +1,38 @@
+[Unit]
+Description=OPSEC-Messangar backend
+After=network.target tor.service
+Wants=tor.service
+
+[Service]
+Type=simple
+User=opsec
+Group=opsec
+WorkingDirectory=/opt/opsec-backend
+ExecStart=/opt/opsec-backend/opsec-backend
+Environment=OPSEC_LISTEN=127.0.0.1:8080
+Environment=OPSEC_DATA_DIR=/var/lib/opsec-backend
+Restart=on-failure
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/opsec-backend
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

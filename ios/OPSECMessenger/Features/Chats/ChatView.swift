@@ -115,7 +115,9 @@ struct ChatView: View {
             if let ct = try? KeyManager.encrypt(plaintext: Data(text.utf8),
                                                 sharedSecret: key) {
                 try? await APIClient.shared.sendMessage(
-                    conversationId: conversation.id, ciphertext: ct, type: .text)
+                    conversationId: conversation.id,
+                    recipientNumericId: conversation.peer.numericId,
+                    ciphertext: ct, type: .text)
             }
         }
     }

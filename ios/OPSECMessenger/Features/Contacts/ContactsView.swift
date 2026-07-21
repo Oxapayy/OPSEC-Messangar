@@ -14,9 +14,10 @@ struct ContactsView: View {
                     Text("No contacts yet")
                         .font(.headline).foregroundStyle(Theme.textPrimary)
                     NavigationLink { AddFriendView() } label: {
-                        Text("Add friend").padding(.horizontal, 24)
+                        Text("Add friend")
                     }
-                    .buttonStyle(PrimaryButtonStyle()).fixedSize()
+                    .buttonStyle(PrimaryButtonStyle())
+                    .frame(width: 200)
                 }
             } else {
                 ScrollView {
