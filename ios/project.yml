@@ -32,6 +32,11 @@ targets:
           - voip
           - remote-notification
           - audio
+        # Allow HTTP to the .onion hidden service (Tor is opaque to ATS)
+        # and to the dev clearnet backend used for on-device testing.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.opsec.messenger
