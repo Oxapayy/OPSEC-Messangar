@@ -2,8 +2,8 @@ import SwiftUI
 
 struct CallView: View {
     let peer: UserProfile
-    enum State { case ringing, connected, ended }
-    @State private var state: State = .ringing
+    enum CallPhase { case ringing, connected, ended }
+    @State private var phase: CallPhase = .ringing
     @State private var elapsed: TimeInterval = 0
     @Environment(\.dismiss) private var dismiss
 
@@ -29,11 +29,11 @@ struct CallView: View {
 
                 HStack(spacing: 32) {
                     callButton(system: "phone.down.fill", color: .red) {
-                        state = .ended; dismiss()
+                        phase = .ended; dismiss()
                     }
-                    if state == .ringing {
+                    if phase == .ringing {
                         callButton(system: "phone.fill", color: .green) {
-                            state = .connected
+                            phase = .connected
                         }
                     }
                 }
@@ -41,7 +41,7 @@ struct CallView: View {
             }
         }
         .navigationBarBackButtonHidden(true)
-        .onReceive(timer) { _ in if state == .connected { elapsed += 1 } }
+        .onReceive(timer) { _ in if phase == .connected { elapsed += 1 } }
     }
 
     private func callButton(system: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -55,7 +55,7 @@ struct CallView: View {
     }
 
     private var subtitle: String {
-        switch state {
+        switch phase {
         case .ringing:   return "Ringing…"
         case .connected: return format(elapsed)
         case .ended:     return "Call ended"
