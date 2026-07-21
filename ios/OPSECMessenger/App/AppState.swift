@@ -7,15 +7,17 @@ final class AppState: ObservableObject {
 
     @Published var phase: Phase = .launching
     @Published var account: Account?
-    @Published var torStatus: TorManager.Status = .disabled
 
+    let torManager = TorManager.shared
     let api = APIClient.shared
     let socket = WebSocketClient.shared
 
     func bootstrap() async {
-        await TorManager.shared.start()
-        torStatus = TorManager.shared.status
+        // Block on Tor bootstrap — no clearnet fallback.
+        await torManager.start()
 
+        // Even if Tor failed, we still surface the onboarding screen so the
+        // user sees the error state from within the app.
         if let acct = KeychainStore.shared.loadAccount() {
             account = acct
             AppState.currentUserId = String(acct.numericId)

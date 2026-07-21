@@ -6,8 +6,6 @@ struct OPSECMessengerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        // Tint UIKit-backed chrome (NavBar / TabBar / TextField cursor) to
-        // match the SwiftUI accent so nothing looks out of place.
         let cyan = UIColor(Theme.cyan)
         UINavigationBar.appearance().tintColor = cyan
         UITabBar.appearance().tintColor = cyan
@@ -28,21 +26,27 @@ struct OPSECMessengerApp: App {
 
 struct RootView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject var tor = TorManager.shared
 
     var body: some View {
-        switch appState.phase {
-        case .launching: SplashView()
-        case .onboarding: OnboardingCoordinator()
-        case .ready: MainTabView()
+        Group {
+            switch appState.phase {
+            case .launching: SplashView()
+            case .onboarding:
+                if tor.status == .connected { OnboardingCoordinator() }
+                else { SplashView() }
+            case .ready: MainTabView()
+            }
         }
     }
 }
 
 struct SplashView: View {
+    @ObservedObject var tor = TorManager.shared
     @State private var pulse = false
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             BrandLogo(size: 140)
                 .scaleEffect(pulse ? 1.04 : 1.0)
                 .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true),
@@ -51,13 +55,51 @@ struct SplashView: View {
                 .font(.system(size: 40, weight: .heavy, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
                 .tracking(6)
-            Text("Private. Onion-routed.")
+
+            statusText
                 .font(.footnote)
                 .foregroundStyle(Theme.textSecondary)
-            ProgressView().tint(Theme.cyan).padding(.top, 16)
+                .padding(.top, 8)
+
+            if tor.status == .bootstrapping {
+                ProgressView(value: Double(tor.progress), total: 100)
+                    .tint(Theme.cyan)
+                    .frame(width: 180)
+                    .padding(.top, 4)
+                Text("\(tor.progress)%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Theme.textSecondary)
+            } else if tor.status == .starting {
+                ProgressView().tint(Theme.cyan).padding(.top, 8)
+            }
+
+            if let err = tor.lastError, tor.status == .failed {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 8)
+                Button("Retry") {
+                    Task { await TorManager.shared.start() }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .frame(width: 160)
+                .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedBackground()
         .onAppear { pulse = true }
+    }
+
+    private var statusText: Text {
+        switch tor.status {
+        case .disabled:      return Text("Preparing Tor…")
+        case .starting:      return Text("Starting Tor…")
+        case .bootstrapping: return Text("Bootstrapping Tor circuit…")
+        case .connected:     return Text("Connected via Tor")
+        case .failed:        return Text("Tor bootstrap failed")
+        }
     }
 }

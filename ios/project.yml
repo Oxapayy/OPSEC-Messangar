@@ -8,9 +8,14 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: "" # TODO: set your Apple developer team ID
+    DEVELOPMENT_TEAM: ""
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  Tor:
+    url: https://github.com/iCepa/Tor.framework.git
+    from: "408.16.0"
 
 targets:
   OPSECMessenger:
@@ -22,31 +27,11 @@ targets:
       - path: OPSECMessenger/Resources
     info:
       path: OPSECMessenger/Resources/Info.plist
-      properties:
-        CFBundleDisplayName: OPSEC
-        UILaunchScreen: {}
-        NSCameraUsageDescription: "Used for video calls and sending photos."
-        NSMicrophoneUsageDescription: "Used for voice and video calls."
-        NSPhotoLibraryUsageDescription: "Used to attach images to messages."
-        UIBackgroundModes:
-          - voip
-          - remote-notification
-          - audio
-        # Allow HTTP to the .onion hidden service (Tor is opaque to ATS)
-        # and to the dev clearnet backend used for on-device testing.
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
-          NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.opsec.messenger
         TARGETED_DEVICE_FAMILY: "1,2"
-    # To enable Tor: uncomment after adding the package in Xcode.
-    # dependencies:
-    #   - package: TorFramework
-    #     product: Tor
-    #
-    # packages:
-    #   TorFramework:
-    #     url: https://github.com/iCepa/Tor.framework
-    #     from: 408.16.0
+        OTHER_LDFLAGS: "-ObjC"
+    dependencies:
+      - package: Tor
+        product: Tor
