@@ -8,26 +8,33 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 20) {
+            BrandLogo(size: 72).padding(.top, 12)
             Text("Enter your 64-character recovery code")
                 .font(.headline)
+                .foregroundStyle(Theme.textPrimary)
 
             TextEditor(text: $code)
                 .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 140)
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.secondary.opacity(0.15)))
+                .foregroundStyle(Theme.cyanSoft)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 160)
+                .padding(10)
+                .background(Theme.surfaceElevated,
+                            in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Theme.cyan.opacity(0.35), lineWidth: 1))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
 
             Button {
                 Task { await login() }
             } label: {
-                if loading { ProgressView() }
-                else { Text("Sign in").frame(maxWidth: .infinity).padding() }
+                if loading { ProgressView().tint(Theme.onAccent) }
+                else { Text("Sign in") }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(loading || code.trimmingCharacters(in: .whitespacesAndNewlines).count != AccountCodeGenerator.length)
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(loading || trimmed.count != AccountCodeGenerator.length)
+            .opacity(trimmed.count == AccountCodeGenerator.length ? 1 : 0.5)
 
             if let errorText {
                 Text(errorText).foregroundStyle(.red).font(.footnote)
@@ -35,15 +42,18 @@ struct LoginView: View {
             Spacer()
         }
         .padding()
+        .themedBackground()
         .navigationTitle("Sign in")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
+
+    private var trimmed: String { code.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func login() async {
         loading = true
         defer { loading = false }
         errorText = nil
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let authKey = AccountCodeGenerator.deriveAuthKey(from: trimmed)
         do {
             let resp = try await APIClient.shared.login(authKey: authKey)

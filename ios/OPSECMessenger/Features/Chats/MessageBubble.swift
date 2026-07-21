@@ -26,17 +26,25 @@ struct MessageBubble: View {
             case .callInvite:
                 Label("Call", systemImage: "phone.fill")
             case .systemNotice:
-                Text(message.text ?? "").font(.footnote).foregroundStyle(.secondary)
+                Text(message.text ?? "").font(.footnote)
+                    .foregroundStyle(Theme.textSecondary)
             }
             Text(message.sentAt, style: .time)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(message.isOutgoing
+                                 ? Theme.onAccent.opacity(0.75)
+                                 : Theme.textSecondary)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(message.isOutgoing
-                    ? Color.accentColor.opacity(0.85)
-                    : Color.secondary.opacity(0.2))
-        .foregroundStyle(message.isOutgoing ? .white : .primary)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background {
+            if message.isOutgoing {
+                RoundedRectangle(cornerRadius: 16).fill(Theme.bubbleOutgoing)
+            } else {
+                RoundedRectangle(cornerRadius: 16).fill(Theme.surfaceElevated)
+                    .overlay(RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(Theme.divider, lineWidth: 1))
+            }
+        }
+        .foregroundStyle(message.isOutgoing ? Theme.onAccent : Theme.textPrimary)
     }
 }

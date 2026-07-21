@@ -6,7 +6,6 @@ struct UsernameView: View {
 
     @EnvironmentObject var appState: AppState
     @State private var username: String = ""
-    @State private var checking = false
     @State private var registering = false
     @State private var status: Status = .idle
     @State private var errorText: String?
@@ -15,22 +14,30 @@ struct UsernameView: View {
 
     var body: some View {
         VStack(spacing: 24) {
+            BrandLogo(size: 72).padding(.top, 12)
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Pick a username")
                     .font(.title2.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
                 Text("Others will add you by this name. You can change it later.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.textSecondary)
                     .font(.footnote)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            TextField("username", text: $username)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .onChange(of: username) { _, new in
-                    validate(new)
-                }
+            HStack {
+                Text("@").foregroundStyle(Theme.cyan).font(.title3.weight(.bold))
+                TextField("username", text: $username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .foregroundStyle(Theme.textPrimary)
+                    .onChange(of: username) { _, new in validate(new) }
+            }
+            .padding()
+            .background(Theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(borderColor, lineWidth: 1))
 
             statusLine
 
@@ -39,30 +46,41 @@ struct UsernameView: View {
             Button {
                 Task { await register() }
             } label: {
-                if registering { ProgressView() }
-                else { Text("Create account").frame(maxWidth: .infinity).padding() }
+                if registering { ProgressView().tint(Theme.onAccent) }
+                else { Text("Create account") }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(registering || status != .available)
+            .opacity(status == .available ? 1 : 0.5)
 
             if let errorText {
                 Text(errorText).foregroundStyle(.red).font(.footnote)
             }
         }
         .padding()
+        .themedBackground()
         .navigationTitle("Choose username")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    private var borderColor: Color {
+        switch status {
+        case .available: return Theme.cyan
+        case .taken, .invalid: return .red.opacity(0.7)
+        case .idle: return Theme.divider
+        }
     }
 
     @ViewBuilder private var statusLine: some View {
         switch status {
-        case .idle:      EmptyView()
-        case .invalid:   Label("3–20 chars, a–z 0–9 _", systemImage: "xmark.circle")
-                             .foregroundStyle(.orange)
-        case .available: Label("Available", systemImage: "checkmark.circle")
-                             .foregroundStyle(.green)
-        case .taken:     Label("Already taken", systemImage: "xmark.circle")
-                             .foregroundStyle(.red)
+        case .idle: EmptyView()
+        case .invalid: Label("3–20 chars, a–z 0–9 _", systemImage: "xmark.circle")
+                .foregroundStyle(.orange).font(.footnote)
+        case .available: Label("Available", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(Theme.cyan).font(.footnote)
+        case .taken: Label("Already taken", systemImage: "xmark.circle")
+                .foregroundStyle(.red).font(.footnote)
         }
     }
 
@@ -74,14 +92,10 @@ struct UsernameView: View {
     }
 
     private func checkAvailability(_ s: String) async {
-        checking = true
-        defer { checking = false }
         do {
             let available = try await APIClient.shared.checkUsernameAvailable(s)
             if username == s { status = available ? .available : .taken }
         } catch {
-            // Backend unreachable — assume available so onboarding still works
-            // offline against local stubs.
             if username == s { status = .available }
         }
     }
@@ -97,16 +111,13 @@ struct UsernameView: View {
                 token = try await APIClient.shared.register(authKey: authKey,
                                                             numericId: numericId)
             } catch {
-                // Offline stub: fabricate a session token so the UI is walkable.
                 token = "offline-" + UUID().uuidString
             }
             APIClient.shared.setSessionToken(token)
-            do { try await APIClient.shared.claimUsername(username) } catch { /* offline */ }
+            do { try await APIClient.shared.claimUsername(username) } catch {}
 
-            let acct = Account(numericId: numericId,
-                               authKey: authKey,
-                               username: username,
-                               sessionToken: token,
+            let acct = Account(numericId: numericId, authKey: authKey,
+                               username: username, sessionToken: token,
                                createdAt: Date())
             await appState.completeOnboarding(acct)
         } catch {
