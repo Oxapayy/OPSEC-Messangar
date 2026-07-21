@@ -181,7 +181,10 @@ extension JSONDecoder {
     }()
 }
 
-struct EmptyResponse: Decodable { init() {} init(from decoder: Decoder) throws {} }
+struct EmptyResponse: Decodable {
+    init() {}
+    init(from decoder: Decoder) throws {}
+}
 struct RegisterResponse: Decodable { let sessionToken: String }
 struct LoginResponse: Decodable { let sessionToken: String; let profile: UserProfile }
 struct AvailabilityResponse: Decodable { let available: Bool }
