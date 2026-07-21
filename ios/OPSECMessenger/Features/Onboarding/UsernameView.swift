@@ -105,23 +105,19 @@ struct UsernameView: View {
         defer { registering = false }
         errorText = nil
         let authKey = AccountCodeGenerator.deriveAuthKey(from: code)
+        let token: String
         do {
-            let token: String
-            do {
-                token = try await APIClient.shared.register(authKey: authKey,
-                                                            numericId: numericId)
-            } catch {
-                token = "offline-" + UUID().uuidString
-            }
-            APIClient.shared.setSessionToken(token)
-            do { try await APIClient.shared.claimUsername(username) } catch {}
-
-            let acct = Account(numericId: numericId, authKey: authKey,
-                               username: username, sessionToken: token,
-                               createdAt: Date())
-            await appState.completeOnboarding(acct)
+            token = try await APIClient.shared.register(authKey: authKey,
+                                                        numericId: numericId)
         } catch {
-            errorText = error.localizedDescription
+            token = "offline-" + UUID().uuidString
         }
+        APIClient.shared.setSessionToken(token)
+        do { try await APIClient.shared.claimUsername(username) } catch {}
+
+        let acct = Account(numericId: numericId, authKey: authKey,
+                           username: username, sessionToken: token,
+                           createdAt: Date())
+        await appState.completeOnboarding(acct)
     }
 }
