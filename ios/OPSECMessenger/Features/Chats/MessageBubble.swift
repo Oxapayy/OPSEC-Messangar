@@ -2,6 +2,9 @@ import SwiftUI
 
 struct MessageBubble: View {
     let message: Message
+    let conversationId: String
+    @State private var showViewOnce = false
+    @StateObject private var db = LocalDatabase.shared
 
     var body: some View {
         HStack {
@@ -23,6 +26,8 @@ struct MessageBubble: View {
                         .frame(maxWidth: 220)
                         .cornerRadius(10)
                 }
+            case .viewOnceImage:
+                viewOnceRow
             case .callInvite:
                 Label("Call", systemImage: "phone.fill")
             case .systemNotice:
@@ -46,5 +51,45 @@ struct MessageBubble: View {
             }
         }
         .foregroundStyle(message.isOutgoing ? Theme.onAccent : Theme.textPrimary)
+    }
+
+    @ViewBuilder private var viewOnceRow: some View {
+        if message.consumed {
+            HStack(spacing: 8) {
+                Image(systemName: "eye.slash.fill")
+                Text("Opened").italic()
+            }
+            .foregroundStyle(message.isOutgoing
+                             ? Theme.onAccent.opacity(0.85)
+                             : Theme.textSecondary)
+        } else {
+            Button {
+                showViewOnce = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "eye.circle.fill").font(.title2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("View once photo").font(.subheadline.weight(.semibold))
+                        Text(message.isOutgoing ? "Waiting to be viewed"
+                                                : "Tap to view — disappears after")
+                            .font(.caption2).opacity(0.85)
+                    }
+                }
+            }
+            .disabled(message.isOutgoing)
+            .fullScreenCover(isPresented: $showViewOnce, onDismiss: markConsumed) {
+                if let data = message.imageData, let ui = UIImage(data: data) {
+                    ViewOnceImageView(image: ui,
+                                      conversationId: conversationId,
+                                      mediaId: message.id)
+                }
+            }
+        }
+    }
+
+    private func markConsumed() {
+        Task { @MainActor in
+            db.markConsumed(messageId: message.id, in: conversationId)
+        }
     }
 }

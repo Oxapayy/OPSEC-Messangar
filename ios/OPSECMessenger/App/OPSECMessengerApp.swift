@@ -21,6 +21,7 @@ struct OPSECMessengerApp: App {
                 .task { await appState.bootstrap() }
                 .preferredColorScheme(.dark)
                 .tint(Theme.cyan)
+                .screenGuard()
         }
     }
 }

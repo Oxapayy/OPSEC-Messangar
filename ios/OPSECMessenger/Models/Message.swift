@@ -1,7 +1,7 @@
 import Foundation
 
 enum MessageType: String, Codable {
-    case text, image, callInvite, systemNotice
+    case text, image, viewOnceImage, callInvite, systemNotice
 }
 
 struct Message: Identifiable, Equatable {
@@ -13,4 +13,6 @@ struct Message: Identifiable, Equatable {
     let imageData: Data?
     let sentAt: Date
     let isOutgoing: Bool
+    /// Set once the recipient has consumed a view-once media. Local-only flag.
+    var consumed: Bool = false
 }

@@ -89,6 +89,17 @@ Response:
 Real signalling happens over the WebSocket (`callOffer`/`callAnswer`/
 `callEnd` events).
 
+## Privacy signals
+
+### `POST /v1/privacy/screenshot`  (auth)
+Client tells the backend that the current user just took a screenshot in a
+conversation. The server delivers a `systemNotice` message to the peer so
+they see "@alice took a screenshot".
+```json
+{ "conversation_id": "...", "media_id": "..." }
+```
+Response: 204 No Content.
+
 ## Push
 
 ### `POST /v1/push/apns`  (auth)

@@ -102,6 +102,17 @@ final class APIClient {
                        authed: true)
     }
 
+    // MARK: - Privacy signals
+
+    /// POST /v1/privacy/screenshot  — tells the peer that the recipient just
+    /// screenshotted a piece of media in this conversation.
+    func reportScreenshot(conversationId: String, mediaId: String?) async throws {
+        var body: [String: Any] = ["conversationId": conversationId]
+        if let mediaId { body["mediaId"] = mediaId }
+        let _: EmptyResponse = try await post(
+            "/v1/privacy/screenshot", body: body, authed: true)
+    }
+
     // MARK: - Notifications
 
     /// POST /v1/push/apns

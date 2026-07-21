@@ -81,6 +81,29 @@ Nothing real to talk to yet. Every backend touchpoint lives in
 Endpoints the client calls are documented in `backend/api-spec.md`. When the
 VPS is up, fill in `BackendConfig` and implement the routes in that spec.
 
+## Screen privacy
+
+iOS does not expose an API to block screenshots. `ios/OPSECMessenger/Security/`
+implements the four-part best-effort defense that every serious iOS
+messenger uses:
+
+- `ScreenProtection.swift` — detects `userDidTakeScreenshotNotification`,
+  watches `UIScreen.capturedDidChangeNotification` for recording/mirroring,
+  and toggles a foreground/background flag from
+  `willResignActiveNotification` / `didBecomeActiveNotification`.
+- `SecureView.swift` — hosts SwiftUI content inside a `UITextField` with
+  `isSecureTextEntry = true`. iOS blanks the secure layer during
+  screenshots, screen recordings, and AirPlay. This is the only technique
+  that actually keeps the pixels off the screenshot.
+- `ScreenGuardModifier.swift` — applied at the app root via
+  `.screenGuard()`. Blurs the app while backgrounded (kills app-switcher
+  leaks), blacks out during active screen recording, and flashes a banner
+  when a screenshot fires.
+- View-once media (`ViewOnceImageView.swift` + `MessageType.viewOnceImage`)
+  uses SecureView for rendering; on dismiss the local image bytes are
+  dropped via `LocalDatabase.markConsumed`. If the recipient screenshots,
+  `POST /v1/privacy/screenshot` fires so the sender is notified.
+
 ## Conventions
 
 - **SwiftUI only** — no UIKit view controllers unless a system API requires it.

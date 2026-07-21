@@ -31,4 +31,22 @@ final class LocalDatabase: ObservableObject {
         guard let i = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
         conversations[i].unreadCount = 0
     }
+
+    /// Marks a view-once message as consumed and drops its image bytes so it
+    /// can't be re-opened from the local cache.
+    func markConsumed(messageId: String, in conversationId: String) {
+        guard var list = messages[conversationId],
+              let i = list.firstIndex(where: { $0.id == messageId }) else { return }
+        let old = list[i]
+        list[i] = Message(id: old.id,
+                          conversationId: old.conversationId,
+                          senderId: old.senderId,
+                          type: old.type,
+                          text: old.text,
+                          imageData: nil,
+                          sentAt: old.sentAt,
+                          isOutgoing: old.isOutgoing,
+                          consumed: true)
+        messages[conversationId] = list
+    }
 }
