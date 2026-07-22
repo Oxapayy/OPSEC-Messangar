@@ -29,6 +29,18 @@ struct SettingsView: View {
                             }.padding(.vertical, 4)
                         }
                     }
+                    section("Privacy") {
+                        NavigationLink {
+                            BlockedUsersView()
+                        } label: {
+                            HStack {
+                                Text("Blocked users").foregroundStyle(Theme.textPrimary)
+                                Spacer()
+                                Image(systemName: "hand.raised.fill")
+                                    .foregroundStyle(Theme.cyan)
+                            }.padding(.vertical, 4)
+                        }
+                    }
                     section("Account") {
                         Button(role: .destructive) { showSignOut = true } label: {
                             HStack {

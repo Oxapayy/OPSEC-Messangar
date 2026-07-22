@@ -55,6 +55,21 @@ final class LocalDatabase: ObservableObject {
         conversations[i].unreadCount = 0
     }
 
+    /// Deletes a single conversation and all its messages from the local store.
+    func clearConversation(_ conversationId: String) {
+        conversations.removeAll { $0.id == conversationId }
+        messages[conversationId] = nil
+    }
+
+    /// Wipes ALL local state. Called on sign-out / account switch so one
+    /// account's chats never bleed into another's on the same device.
+    func wipe() {
+        conversations = []
+        messages = [:]
+        contacts = []
+        contactRequests = []
+    }
+
     /// Marks a view-once message as consumed and drops its image bytes so it
     /// can't be re-opened from the local cache.
     func markConsumed(messageId: String, in conversationId: String) {

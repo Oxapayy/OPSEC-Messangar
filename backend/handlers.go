@@ -184,6 +184,94 @@ func (s *Server) handleAddContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleRemoveContact(w http.ResponseWriter, r *http.Request) {
+	contactID, ok := s.resolveNumericPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.DB.RemoveContact(r.Context(), accountID(r), contactID); err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleBlock(w http.ResponseWriter, r *http.Request) {
+	var req addContactReq
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	numeric, err := strconv.ParseUint(req.UserID, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad user_id")
+		return
+	}
+	var blockedID int64
+	err = s.DB.QueryRowContext(r.Context(),
+		`SELECT id FROM accounts WHERE numeric_id = ?`, numeric).Scan(&blockedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "no such user")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	if err := s.DB.BlockUser(r.Context(), accountID(r), blockedID); err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleUnblock(w http.ResponseWriter, r *http.Request) {
+	blockedID, ok := s.resolveNumericPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.DB.UnblockUser(r.Context(), accountID(r), blockedID); err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListBlocked(w http.ResponseWriter, r *http.Request) {
+	blocked, err := s.DB.ListBlocked(r.Context(), accountID(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	out := make([]profile, 0, len(blocked))
+	for _, a := range blocked {
+		out = append(out, acctToProfile(a))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"blocked": out})
+}
+
+// resolveNumericPath reads the {id} path value as a public numeric id and
+// maps it to the internal accounts row id.
+func (s *Server) resolveNumericPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	numeric, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad id")
+		return 0, false
+	}
+	var rowID int64
+	err = s.DB.QueryRowContext(r.Context(),
+		`SELECT id FROM accounts WHERE numeric_id = ?`, numeric).Scan(&rowID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "no such user")
+		return 0, false
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db")
+		return 0, false
+	}
+	return rowID, true
+}
+
 func (s *Server) handleListContactRequests(w http.ResponseWriter, r *http.Request) {
 	reqs, err := s.DB.ListContactRequests(r.Context(), accountID(r))
 	if err != nil {
@@ -244,6 +332,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "db")
+		return
+	}
+	// Blocked in either direction → silently accept but never deliver, so a
+	// blocker doesn't reveal the block and a blockee can't spam.
+	if blocked, _ := s.DB.IsBlocked(r.Context(), accountID(r), recipID); blocked {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	me, err := s.DB.AccountByID(r.Context(), accountID(r))

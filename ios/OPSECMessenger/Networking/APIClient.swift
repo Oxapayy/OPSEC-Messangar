@@ -83,6 +83,24 @@ final class APIClient {
         return resp.requests
     }
 
+    func removeContact(numericId: UInt64) async throws {
+        let _: EmptyResponse = try await delete("/v1/contacts/\(numericId)", authed: true)
+    }
+
+    func blockUser(numericId: UInt64) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/blocks", body: ["user_id": String(numericId)], authed: true)
+    }
+
+    func unblockUser(numericId: UInt64) async throws {
+        let _: EmptyResponse = try await delete("/v1/blocks/\(numericId)", authed: true)
+    }
+
+    func listBlocked() async throws -> [UserProfile] {
+        let resp: BlockedResponse = try await get("/v1/blocks", authed: true)
+        return resp.blocked
+    }
+
     // MARK: - Messages
 
     func sendMessage(conversationId: String, recipientNumericId: UInt64,
@@ -186,6 +204,9 @@ final class APIClient {
                                    authed: Bool) async throws -> T {
         try await send(try request(path, method: "PUT", authed: authed, body: body))
     }
+    private func delete<T: Decodable>(_ path: String, authed: Bool) async throws -> T {
+        try await send(try request(path, method: "DELETE", authed: authed))
+    }
 }
 
 extension JSONDecoder {
@@ -218,5 +239,6 @@ struct LoginResponse: Decodable { let sessionToken: String; let profile: UserPro
 struct AvailabilityResponse: Decodable { let available: Bool }
 struct ContactsResponse: Decodable { let contacts: [UserProfile] }
 struct RequestsResponse: Decodable { let requests: [UserProfile] }
+struct BlockedResponse: Decodable { let blocked: [UserProfile] }
 struct AttachmentUploadTicket: Decodable { let uploadUrl: String; let fileId: String }
 struct CallSession: Decodable { let callId: String; let sdpAnswer: String? }

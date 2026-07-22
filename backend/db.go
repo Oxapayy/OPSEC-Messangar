@@ -73,6 +73,12 @@ func (db *DB) migrate() error {
 			token      TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS blocks (
+			blocker_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			blocked_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (blocker_id, blocked_id)
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -224,6 +230,71 @@ func (db *DB) AddContact(ctx context.Context, owner, contact int64) error {
 		`INSERT OR IGNORE INTO contacts (owner_id, contact_id, added_at) VALUES (?, ?, ?)`,
 		owner, contact, time.Now().UTC().Format(time.RFC3339))
 	return err
+}
+
+func (db *DB) RemoveContact(ctx context.Context, owner, contact int64) error {
+	_, err := db.ExecContext(ctx,
+		`DELETE FROM contacts WHERE owner_id = ? AND contact_id = ?`, owner, contact)
+	return err
+}
+
+// ---------- blocks ----------
+
+func (db *DB) BlockUser(ctx context.Context, blocker, blocked int64) error {
+	if _, err := db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)`,
+		blocker, blocked, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	// Blocking also removes the contact relationship in both directions.
+	_, err := db.ExecContext(ctx,
+		`DELETE FROM contacts WHERE (owner_id = ? AND contact_id = ?)
+		                          OR (owner_id = ? AND contact_id = ?)`,
+		blocker, blocked, blocked, blocker)
+	return err
+}
+
+func (db *DB) UnblockUser(ctx context.Context, blocker, blocked int64) error {
+	_, err := db.ExecContext(ctx,
+		`DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?`, blocker, blocked)
+	return err
+}
+
+// IsBlocked reports whether `a` has blocked `b` OR `b` has blocked `a`.
+func (db *DB) IsBlocked(ctx context.Context, a, b int64) (bool, error) {
+	var one int
+	err := db.QueryRowContext(ctx,
+		`SELECT 1 FROM blocks
+		 WHERE (blocker_id = ? AND blocked_id = ?)
+		    OR (blocker_id = ? AND blocked_id = ?) LIMIT 1`,
+		a, b, b, a).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (db *DB) ListBlocked(ctx context.Context, blocker int64) ([]*Account, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at
+		 FROM accounts a JOIN blocks b ON b.blocked_id = a.id
+		 WHERE b.blocker_id = ? ORDER BY b.created_at DESC`, blocker)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Account
+	for rows.Next() {
+		var a Account
+		var created string
+		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username,
+			&a.PublicKey, &created); err != nil {
+			return nil, err
+		}
+		a.CreatedAt, _ = time.Parse(time.RFC3339, created)
+		out = append(out, &a)
+	}
+	return out, nil
 }
 
 // ListContactRequests returns accounts that added `me` as a contact while

@@ -3,10 +3,14 @@ import PhotosUI
 
 struct ChatView: View {
     let conversation: Conversation
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var db = LocalDatabase.shared
     @State private var draft = ""
     @State private var pickerItem: PhotosPickerItem?
     @State private var viewOnceMode = false
+    @State private var confirmClear = false
+    @State private var confirmBlock = false
+    @State private var confirmRemove = false
 
     var body: some View {
         ZStack {
@@ -36,12 +40,59 @@ struct ChatView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { CallView(peer: conversation.peer) } label: {
+                NavigationLink { CallView(peer: conversation.peer, outgoing: true) } label: {
                     Image(systemName: "phone.fill").foregroundStyle(Theme.cyan)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) { confirmClear = true } label: {
+                        Label("Clear chat", systemImage: "trash")
+                    }
+                    Button { confirmRemove = true } label: {
+                        Label("Remove friend", systemImage: "person.badge.minus")
+                    }
+                    Button(role: .destructive) { confirmBlock = true } label: {
+                        Label("Block user", systemImage: "hand.raised")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle").foregroundStyle(Theme.cyan)
                 }
             }
         }
         .onAppear { db.markRead(conversation.id) }
+        .alert("Delete this chat?", isPresented: $confirmClear) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                db.clearConversation(conversation.id)
+                dismiss()
+            }
+        } message: {
+            Text("Are you sure you want to delete this chat from the database? This removes every message in it from this device.")
+        }
+        .alert("Remove @\(conversation.peer.username)?", isPresented: $confirmRemove) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove", role: .destructive) {
+                Task {
+                    try? await APIClient.shared.removeContact(numericId: conversation.peer.numericId)
+                    await db.refreshContacts()
+                }
+            }
+        } message: {
+            Text("They'll be removed from your contacts. Your chat history stays until you clear it.")
+        }
+        .alert("Block @\(conversation.peer.username)?", isPresented: $confirmBlock) {
+            Button("Cancel", role: .cancel) {}
+            Button("Block", role: .destructive) {
+                Task {
+                    try? await APIClient.shared.blockUser(numericId: conversation.peer.numericId)
+                    await db.refreshContacts()
+                    dismiss()
+                }
+            }
+        } message: {
+            Text("You won't receive messages from them, and they're removed from your contacts. You can unblock later in Settings.")
+        }
     }
 
     private var composer: some View {

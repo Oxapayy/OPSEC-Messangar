@@ -63,7 +63,7 @@ struct ContactsView: View {
                     .foregroundStyle(Theme.cyan).font(.title3)
             }
             .buttonStyle(.plain)
-            NavigationLink { CallView(peer: c) } label: {
+            NavigationLink { CallView(peer: c, outgoing: true) } label: {
                 Image(systemName: "phone.fill")
                     .foregroundStyle(Theme.cyan).font(.title3)
                     .padding(.leading, 6)
@@ -72,6 +72,16 @@ struct ContactsView: View {
         }
         .padding(12)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+        .contextMenu {
+            Button(role: .destructive) {
+                Task { try? await APIClient.shared.removeContact(numericId: c.numericId)
+                       await db.refreshContacts() }
+            } label: { Label("Remove friend", systemImage: "person.badge.minus") }
+            Button(role: .destructive) {
+                Task { try? await APIClient.shared.blockUser(numericId: c.numericId)
+                       await db.refreshContacts() }
+            } label: { Label("Block", systemImage: "hand.raised") }
+        }
     }
 
     private func requestRow(_ r: UserProfile) -> some View {

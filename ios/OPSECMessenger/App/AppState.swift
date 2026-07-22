@@ -83,6 +83,7 @@ final class AppState: ObservableObject {
     }
 
     func completeOnboarding(_ acct: Account) async {
+        LocalDatabase.shared.wipe()   // start clean for the new account
         KeychainStore.shared.saveAccount(acct)
         account = acct
         AppState.currentUserId = String(acct.numericId)
@@ -95,6 +96,7 @@ final class AppState: ObservableObject {
 
     func signOut() {
         KeychainStore.shared.clear()
+        LocalDatabase.shared.wipe()   // don't leak chats to the next account
         account = nil
         AppState.currentUserId = nil
         APIClient.shared.setSessionToken(nil)

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CallView: View {
     let peer: UserProfile
+    var outgoing: Bool = true
     enum CallPhase { case ringing, connected, ended }
     @State private var phase: CallPhase = .ringing
     @State private var elapsed: TimeInterval = 0
