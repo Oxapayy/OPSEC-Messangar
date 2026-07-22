@@ -9,14 +9,18 @@ actor WebSocketClient {
     private var receiveLoop: Task<Void, Never>?
 
     var onEvent: (@Sendable (SocketEvent) -> Void)?
-    var onCallFrame: (@Sendable ([String: Any]) -> Void)?
+    private var callHandlers: [@Sendable ([String: Any]) -> Void] = []
 
     func setOnEvent(_ handler: @escaping @Sendable (SocketEvent) -> Void) {
         onEvent = handler
     }
-    func setOnCallFrame(_ handler: @escaping @Sendable ([String: Any]) -> Void) {
-        onCallFrame = handler
+    /// Additive: every subsystem (calls, secret chat, …) registers its own
+    /// handler. All of them get every call/signalling frame — each ignores
+    /// frame kinds it doesn't care about.
+    func addCallHandler(_ handler: @escaping @Sendable ([String: Any]) -> Void) {
+        callHandlers.append(handler)
     }
+    func clearCallHandlers() { callHandlers.removeAll() }
 
     /// Sends an arbitrary call/signalling frame ({kind, payload}). Used for
     /// ringing, accept/reject/end and streamed audio chunks.
@@ -72,8 +76,9 @@ actor WebSocketClient {
         // Call frames (ring/accept/reject/end/audio) carry a free-form payload
         // and are routed straight to the call manager, not the typed decoder.
         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let kind = obj["kind"] as? String, kind.hasPrefix("call") {
-            onCallFrame?(obj)
+           let kind = obj["kind"] as? String,
+           kind.hasPrefix("call") || kind.hasPrefix("secret") {
+            for h in callHandlers { h(obj) }
             return
         }
         guard let event = try? JSONDecoder.snake.decode(SocketEvent.self, from: data) else {

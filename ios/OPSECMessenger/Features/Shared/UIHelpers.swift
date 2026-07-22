@@ -1,16 +1,97 @@
 import SwiftUI
 import AVKit
+import MapKit
 
-/// Placeholder bubble for location messages; the real MapKit renderer arrives
-/// with the location-picker feature. Shows the address/label at least.
+/// Map-preview bubble for a location message. Tap to open the full map.
 struct LocationBubble: View {
     let message: Message
+    @State private var full = false
+
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "mappin.and.ellipse")
-                .foregroundStyle(Theme.cyan)
-            Text(message.text ?? "Location")
-                .foregroundStyle(Theme.textPrimary)
+        if let payload = message.text.flatMap(LocationPayload.decode) {
+            Button { full = true } label: {
+                VStack(alignment: .leading, spacing: 0) {
+                    Map(coordinateRegion: .constant(MKCoordinateRegion(
+                        center: payload.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.01,
+                                               longitudeDelta: 0.01))),
+                        annotationItems: [payload]) { p in
+                        MapAnnotation(coordinate: p.coordinate) {
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.title2).foregroundStyle(Theme.cyan)
+                        }
+                    }
+                    .frame(width: 220, height: 130)
+                    .disabled(true)
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundStyle(Theme.cyan)
+                        Text(payload.label).lineLimit(1)
+                    }
+                    .padding(8)
+                }
+                .background(Theme.surfaceElevated)
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+            .fullScreenCover(isPresented: $full) {
+                LocationFullView(payload: payload)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "mappin.and.ellipse").foregroundStyle(Theme.cyan)
+                Text(message.text ?? "Location").foregroundStyle(Theme.textPrimary)
+            }
+        }
+    }
+}
+
+extension LocationPayload: Identifiable { public var id: String { encoded } }
+
+/// Full-screen interactive map for a location message; offers "Open in Maps".
+struct LocationFullView: View {
+    let payload: LocationPayload
+    @Environment(\.dismiss) private var dismiss
+    @State private var region: MKCoordinateRegion
+
+    init(payload: LocationPayload) {
+        self.payload = payload
+        _region = State(initialValue: MKCoordinateRegion(
+            center: payload.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Map(coordinateRegion: $region, annotationItems: [payload]) { p in
+                MapAnnotation(coordinate: p.coordinate) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 34)).foregroundStyle(Theme.cyan)
+                }
+            }
+            .ignoresSafeArea()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title).foregroundStyle(.white.opacity(0.9)).padding()
+            }
+            VStack {
+                Spacer()
+                VStack(spacing: 8) {
+                    Text(payload.label).font(.headline)
+                        .foregroundStyle(Theme.textPrimary)
+                    Button {
+                        let placemark = MKPlacemark(coordinate: payload.coordinate)
+                        let item = MKMapItem(placemark: placemark)
+                        item.name = payload.label
+                        item.openInMaps(launchOptions: nil)
+                    } label: { Text("Open in Maps") }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                .padding()
+                .background(Theme.surface.opacity(0.95),
+                            in: RoundedRectangle(cornerRadius: 18))
+                .padding()
+            }
         }
     }
 }

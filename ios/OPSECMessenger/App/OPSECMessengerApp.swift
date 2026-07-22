@@ -38,8 +38,9 @@ struct RootView: View {
             case .ready: MainTabView()
             }
         }
-        // A live call takes over the whole screen, over any tab.
+        // A live call / secret chat takes over the whole screen, over any tab.
         .overlay { CallOverlay() }
+        .overlay { SecretChatOverlay() }
         // Tiny build stamp so we can always confirm which binary is running.
         .overlay(alignment: .bottom) {
             Text("build \(AppInfo.version)")

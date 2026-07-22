@@ -36,6 +36,8 @@
     <string>Used for voice and video calls.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Used to attach images to messages.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Only used when you tap "Share location" to place a pin on the map. Nothing is uploaded automatically.</string>
 
     <!-- Background modes for VoIP + push -->
     <key>UIBackgroundModes</key>

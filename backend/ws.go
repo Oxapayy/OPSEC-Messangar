@@ -148,7 +148,12 @@ func (s *Server) readPump(ctx context.Context, c *wsConn) {
 				}
 			}
 		case "callOffer", "callAccept", "callReject", "callAnswer",
-			"callEnd", "callAudio", "typing":
+			"callEnd", "callAudio", "typing",
+			// Secret chat is entirely socket-relayed — never persisted.
+			// If the peer's offline the frame is dropped, which is exactly
+			// what "ephemeral" means.
+			"secretInvite", "secretJoin", "secretDecline", "secretLeave",
+			"secretMessage":
 			// Relay signalling / audio to the other party. Blocked pairs
 			// can't ring each other.
 			if m, ok := f.Payload.(map[string]any); ok {

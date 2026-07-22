@@ -159,7 +159,9 @@ final class AppState: ObservableObject {
             APIClient.shared.setSessionToken(acct.sessionToken)
             phase = .ready
             await attachSocketHandlers()
+            await WebSocketClient.shared.clearCallHandlers()
             await CallManager.shared.attach()
+            await SecretChatManager.shared.attach()
             await socket.connect(sessionToken: acct.sessionToken)
             await LocalDatabase.shared.refreshContacts()
             await LocalDatabase.shared.refreshGroups()

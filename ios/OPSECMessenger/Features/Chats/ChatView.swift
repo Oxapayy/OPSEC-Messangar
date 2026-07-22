@@ -12,6 +12,8 @@ struct ChatView: View {
     @State private var confirmClear = false
     @State private var confirmBlock = false
     @State private var confirmRemove = false
+    @State private var showLocationPicker = false
+    @State private var showSecretInviteConfirm = false
     @StateObject private var recorder = VoiceRecorder()
 
     var body: some View {
@@ -59,6 +61,13 @@ struct ChatView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { showSecretInviteConfirm = true } label: {
+                        Label("Secret chat", systemImage: "lock.shield.fill")
+                    }
+                    Button { showLocationPicker = true } label: {
+                        Label("Share location", systemImage: "mappin.and.ellipse")
+                    }
+                    Divider()
                     Button(role: .destructive) { confirmClear = true } label: {
                         Label("Clear chat", systemImage: "trash")
                     }
@@ -115,6 +124,17 @@ struct ChatView: View {
             }
         } message: {
             Text("You won't receive messages from them, and they're removed from your contacts. You can unblock later in Settings.")
+        }
+        .sheet(isPresented: $showLocationPicker) {
+            LocationPicker { payload in sendLocation(payload) }
+        }
+        .alert("Start a secret chat?", isPresented: $showSecretInviteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Invite") {
+                SecretChatManager.shared.invite(peer: conversation.peer)
+            }
+        } message: {
+            Text("A one-time pop-up chat that isn't saved anywhere. When either of you taps Leave, everything is wiped on BOTH devices.")
         }
     }
 
@@ -231,6 +251,25 @@ struct ChatView: View {
             await MainActor.run { isVideo ? sendVideo(data) : sendImage(data) }
         }
         await MainActor.run { pickerItem = nil }
+    }
+
+    private func sendLocation(_ p: LocationPayload) {
+        guard let me = AppState.currentUserId else { return }
+        db.append(message: Message(id: UUID().uuidString,
+                                   conversationId: conversation.id,
+                                   senderId: me, type: .location,
+                                   text: p.encoded, imageData: nil,
+                                   sentAt: Date(), isOutgoing: true))
+        Task {
+            let key = KeyManager.placeholderConversationKey(for: conversation.id)
+            if let ct = try? KeyManager.encrypt(plaintext: Data(p.encoded.utf8),
+                                                sharedSecret: key) {
+                try? await APIClient.shared.sendMessage(
+                    conversationId: conversation.id,
+                    recipientNumericId: conversation.peer.numericId,
+                    ciphertext: ct, type: .location)
+            }
+        }
     }
 
     private func sendVideo(_ data: Data) {

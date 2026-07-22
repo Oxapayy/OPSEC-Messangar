@@ -37,7 +37,8 @@ final class CallManager: ObservableObject {
 
     /// Wire up the socket + audio callbacks. Call once after the socket connects.
     func attach() async {
-        await WebSocketClient.shared.setOnCallFrame { [weak self] frame in
+        await WebSocketClient.shared.addCallHandler { [weak self] frame in
+            guard let kind = frame["kind"] as? String, kind.hasPrefix("call") else { return }
             Task { @MainActor in self?.handle(frame) }
         }
         audio.onCapturedChunk = { [weak self] data in
