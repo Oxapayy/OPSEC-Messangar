@@ -26,6 +26,8 @@ final class AppState: ObservableObject {
             deliver(env)
         case .contactRequest:
             Task { await LocalDatabase.shared.refreshContacts() }
+        case .groupInvite, .groupUpdate, .groupRemoved:
+            Task { await LocalDatabase.shared.refreshGroups() }
         default:
             break
         }
@@ -35,9 +37,12 @@ final class AppState: ObservableObject {
         guard let acct = account else { return }
         let db = LocalDatabase.shared
 
+        // Group messages are keyed by the group id and shown in the Groups
+        // tab, not the 1:1 chat list — don't synthesize a direct conversation.
         // Ensure the conversation exists — messages from strangers create one
         // (the chat list files it under "Message requests" until added back).
-        if !db.conversations.contains(where: { $0.id == env.conversationId }) {
+        if !db.isGroup(env.conversationId),
+           !db.conversations.contains(where: { $0.id == env.conversationId }) {
             let numeric = UInt64(env.senderId) ?? 0
             let name = (env.senderUsername?.isEmpty == false)
                 ? env.senderUsername! : "user\(String(env.senderId.suffix(4)))"
@@ -105,6 +110,7 @@ final class AppState: ObservableObject {
             await attachSocketHandlers()
             await socket.connect(sessionToken: acct.sessionToken)
             await LocalDatabase.shared.refreshContacts()
+            await LocalDatabase.shared.refreshGroups()
         } else {
             phase = .onboarding
         }
@@ -120,6 +126,7 @@ final class AppState: ObservableObject {
         await attachSocketHandlers()
         await socket.connect(sessionToken: acct.sessionToken)
         await LocalDatabase.shared.refreshContacts()
+        await LocalDatabase.shared.refreshGroups()
     }
 
     func signOut() {

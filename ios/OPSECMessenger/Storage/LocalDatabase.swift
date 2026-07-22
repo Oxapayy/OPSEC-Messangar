@@ -11,6 +11,20 @@ final class LocalDatabase: ObservableObject {
     @Published private(set) var messages: [String: [Message]] = [:]  // by conversationId
     @Published private(set) var contacts: [UserProfile] = []
     @Published private(set) var contactRequests: [UserProfile] = []
+    @Published private(set) var groups: [GroupInfo] = []
+    @Published private(set) var groupInvites: [GroupInfo] = []
+
+    func isGroup(_ conversationId: String) -> Bool {
+        groups.contains { $0.id == conversationId }
+    }
+    func group(_ id: String) -> GroupInfo? { groups.first { $0.id == id } }
+
+    func refreshGroups() async {
+        if let g = try? await APIClient.shared.listGroups() { groups = g }
+        if let i = try? await APIClient.shared.listGroupInvites() { groupInvites = i }
+    }
+
+    func setGroups(_ g: [GroupInfo]) { groups = g }
 
     func isContact(numericId: UInt64) -> Bool {
         contacts.contains { $0.numericId == numericId }
@@ -81,6 +95,8 @@ final class LocalDatabase: ObservableObject {
         messages = [:]
         contacts = []
         contactRequests = []
+        groups = []
+        groupInvites = []
     }
 
     /// Marks a view-once message as consumed and drops its image bytes so it

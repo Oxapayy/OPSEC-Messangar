@@ -31,6 +31,9 @@ struct MainTabView: View {
             NavigationStack { ContactsView() }
                 .tabItem { Label("Contacts", systemImage: "person.2.fill") }
 
+            NavigationStack { GroupsView() }
+                .tabItem { Label("Groups", systemImage: "person.3.fill") }
+
             NavigationStack { SettingsView() }
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }

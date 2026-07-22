@@ -101,6 +101,56 @@ final class APIClient {
         return resp.blocked
     }
 
+    // MARK: - Groups
+
+    func createGroup(name: String) async throws -> GroupInfo {
+        try await post("/v1/groups", body: ["name": name], authed: true)
+    }
+    func listGroups() async throws -> [GroupInfo] {
+        let resp: GroupsResponse = try await get("/v1/groups", authed: true)
+        return resp.groups
+    }
+    func groupDetail(_ id: String) async throws -> GroupInfo {
+        try await get("/v1/groups/\(id)", authed: true)
+    }
+    func listGroupInvites() async throws -> [GroupInfo] {
+        let resp: GroupInvitesResponse = try await get("/v1/groups/invites", authed: true)
+        return resp.invites
+    }
+    func inviteToGroup(_ id: String, username: String) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/groups/\(id)/invite", body: ["username": username], authed: true)
+    }
+    func acceptGroupInvite(_ id: String) async throws -> GroupInfo {
+        try await post("/v1/groups/\(id)/accept", body: [:], authed: true)
+    }
+    func declineGroupInvite(_ id: String) async throws {
+        let _: EmptyResponse = try await post("/v1/groups/\(id)/decline", body: [:], authed: true)
+    }
+    func kickFromGroup(_ id: String, numericId: UInt64) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/groups/\(id)/kick", body: ["user_id": String(numericId)], authed: true)
+    }
+    func promoteInGroup(_ id: String, numericId: UInt64) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/groups/\(id)/promote", body: ["user_id": String(numericId)], authed: true)
+    }
+    func leaveGroup(_ id: String) async throws {
+        let _: EmptyResponse = try await post("/v1/groups/\(id)/leave", body: [:], authed: true)
+    }
+    func sendGroupMessage(_ id: String, ciphertext: Data, type: MessageType) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/groups/\(id)/messages",
+            body: ["type": type.rawValue, "payload": ciphertext.base64EncodedString()],
+            authed: true)
+    }
+    func sendGroupAttachment(_ id: String, fileId: String, type: MessageType) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/groups/\(id)/messages",
+            body: ["type": type.rawValue, "payload": Data(fileId.utf8).base64EncodedString()],
+            authed: true)
+    }
+
     // MARK: - Messages
 
     func sendMessage(conversationId: String, recipientNumericId: UInt64,
@@ -275,5 +325,7 @@ struct AvailabilityResponse: Decodable { let available: Bool }
 struct ContactsResponse: Decodable { let contacts: [UserProfile] }
 struct RequestsResponse: Decodable { let requests: [UserProfile] }
 struct BlockedResponse: Decodable { let blocked: [UserProfile] }
+struct GroupsResponse: Decodable { let groups: [GroupInfo] }
+struct GroupInvitesResponse: Decodable { let invites: [GroupInfo] }
 struct AttachmentUploadTicket: Decodable { let uploadUrl: String; let fileId: String }
 struct CallSession: Decodable { let callId: String; let sdpAnswer: String? }

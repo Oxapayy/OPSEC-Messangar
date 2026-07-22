@@ -66,6 +66,9 @@ actor WebSocketClient {
 enum SocketEvent: Codable {
     case message(MessageEnvelope)
     case contactRequest(UserProfile)
+    case groupInvite(GroupInfo)
+    case groupUpdate(GroupInfo)
+    case groupRemoved(groupId: String)
     case typing(conversationId: String, userId: String)
     case callOffer(from: String, sdp: String, callId: String)
     case callAnswer(callId: String, sdp: String)
@@ -74,7 +77,8 @@ enum SocketEvent: Codable {
 
     // Simple discriminator-based coding.
     enum Kind: String, Codable {
-        case message, contactRequest, typing, callOffer, callAnswer, callEnd, presence
+        case message, contactRequest, groupInvite, groupUpdate, groupRemoved
+        case typing, callOffer, callAnswer, callEnd, presence
     }
     private enum CodingKeys: String, CodingKey { case kind, payload }
 
@@ -85,6 +89,13 @@ enum SocketEvent: Codable {
         case .message:    self = .message(try c.decode(MessageEnvelope.self, forKey: .payload))
         case .contactRequest:
             self = .contactRequest(try c.decode(UserProfile.self, forKey: .payload))
+        case .groupInvite:
+            self = .groupInvite(try c.decode(GroupInfo.self, forKey: .payload))
+        case .groupUpdate:
+            self = .groupUpdate(try c.decode(GroupInfo.self, forKey: .payload))
+        case .groupRemoved:
+            let p = try c.decode([String: String].self, forKey: .payload)
+            self = .groupRemoved(groupId: p["groupId"] ?? p["group_id"] ?? "")
         case .typing:
             let p = try c.decode([String: String].self, forKey: .payload)
             self = .typing(conversationId: p["conversationId"] ?? "",
@@ -116,6 +127,15 @@ enum SocketEvent: Codable {
         case .contactRequest(let p):
             try c.encode(Kind.contactRequest, forKey: .kind)
             try c.encode(p, forKey: .payload)
+        case .groupInvite(let g):
+            try c.encode(Kind.groupInvite, forKey: .kind)
+            try c.encode(g, forKey: .payload)
+        case .groupUpdate(let g):
+            try c.encode(Kind.groupUpdate, forKey: .kind)
+            try c.encode(g, forKey: .payload)
+        case .groupRemoved(let gid):
+            try c.encode(Kind.groupRemoved, forKey: .kind)
+            try c.encode(["group_id": gid], forKey: .payload)
         case .typing(let cid, let uid):
             try c.encode(Kind.typing, forKey: .kind)
             try c.encode(["conversationId": cid, "userId": uid], forKey: .payload)

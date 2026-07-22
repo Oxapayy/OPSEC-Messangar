@@ -85,7 +85,7 @@ func (db *DB) migrate() error {
 			return err
 		}
 	}
-	return nil
+	return db.migrateGroups()
 }
 
 // ---------- accounts ----------
