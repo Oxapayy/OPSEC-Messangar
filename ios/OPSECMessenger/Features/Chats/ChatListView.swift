@@ -184,7 +184,7 @@ struct ConversationRow: View {
                             .foregroundStyle(Theme.onAccent)
                     }
                 }
-                Text(conversation.lastMessage?.text ?? "New conversation")
+                Text(conversation.lastMessage?.preview ?? "New conversation")
                     .lineLimit(1)
                     .foregroundStyle(Theme.textSecondary)
                     .font(.subheadline)

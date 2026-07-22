@@ -118,6 +118,41 @@ final class APIClient {
         try await post("/v1/attachments", body: ["size": byteCount], authed: true)
     }
 
+    /// Uploads raw (already-encrypted) attachment bytes to a ticket's id.
+    func uploadAttachment(fileId: String, data: Data) async throws {
+        var req = try request("/v1/attachments/\(fileId)", method: "PUT", authed: true)
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.httpBody = data
+        let (_, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw APIError.http(0, "attachment upload failed")
+        }
+    }
+
+    /// Downloads raw (still-encrypted) attachment bytes for a file id.
+    func downloadAttachment(fileId: String) async throws -> Data {
+        let req = try request("/v1/attachments/\(fileId)", method: "GET", authed: true)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw APIError.http(0, "attachment download failed")
+        }
+        return data
+    }
+
+    /// Sends a media message whose payload is the opaque attachment file id.
+    func sendAttachmentMessage(conversationId: String, recipientNumericId: UInt64,
+                               fileId: String, type: MessageType) async throws {
+        let body: [String: Any] = [
+            "conversation_id": conversationId,
+            "recipient_id": String(recipientNumericId),
+            "type": type.rawValue,
+            "payload": Data(fileId.utf8).base64EncodedString(),
+        ]
+        let _: EmptyResponse = try await post("/v1/messages", body: body, authed: true)
+    }
+
     // MARK: - Calls
 
     func startCall(peerId: String, sdpOffer: String) async throws -> CallSession {

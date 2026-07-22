@@ -5,6 +5,7 @@ struct MessageBubble: View {
     let conversationId: String
     @State private var showViewOnce = false
     @StateObject private var db = LocalDatabase.shared
+    @StateObject private var player = VoicePlayer()
 
     var body: some View {
         HStack {
@@ -25,7 +26,11 @@ struct MessageBubble: View {
                         .resizable().scaledToFit()
                         .frame(maxWidth: 220)
                         .cornerRadius(10)
+                } else {
+                    mediaPlaceholder("Photo")
                 }
+            case .voice:
+                voiceRow
             case .viewOnceImage:
                 viewOnceRow
             case .callInvite:
@@ -51,6 +56,34 @@ struct MessageBubble: View {
             }
         }
         .foregroundStyle(message.isOutgoing ? Theme.onAccent : Theme.textPrimary)
+    }
+
+    @ViewBuilder private var voiceRow: some View {
+        if let audio = message.audioData {
+            Button { player.toggle(audio) } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: player.playing ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.title)
+                    Image(systemName: "waveform")
+                    Text(durationText(message.audioDuration))
+                        .font(.caption.monospacedDigit())
+                }
+            }
+        } else {
+            mediaPlaceholder("Voice message")
+        }
+    }
+
+    private func mediaPlaceholder(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Loading \(label.lowercased())…").font(.footnote)
+        }
+        .foregroundStyle(message.isOutgoing ? Theme.onAccent.opacity(0.85) : Theme.textSecondary)
+    }
+
+    private func durationText(_ t: Double) -> String {
+        let s = Int(t.rounded()); return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     @ViewBuilder private var viewOnceRow: some View {

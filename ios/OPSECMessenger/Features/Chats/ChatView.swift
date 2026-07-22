@@ -11,6 +11,7 @@ struct ChatView: View {
     @State private var confirmClear = false
     @State private var confirmBlock = false
     @State private var confirmRemove = false
+    @StateObject private var recorder = VoiceRecorder()
 
     var body: some View {
         ZStack {
@@ -108,45 +109,52 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                PhotosPicker(selection: $pickerItem, matching: .images) {
-                    Image(systemName: "photo").font(.title2).foregroundStyle(Theme.cyan)
-                }
-                .onChange(of: pickerItem) { _, item in
-                    Task {
-                        if let data = try? await item?.loadTransferable(type: Data.self) {
-                            sendImage(data)
+            if recorder.isRecording {
+                recordingBar
+            } else {
+                HStack(alignment: .bottom, spacing: 8) {
+                    PhotosPicker(selection: $pickerItem, matching: .images) {
+                        Image(systemName: "photo").font(.title2).foregroundStyle(Theme.cyan)
+                    }
+                    .onChange(of: pickerItem) { _, item in
+                        Task {
+                            if let data = try? await item?.loadTransferable(type: Data.self) {
+                                sendImage(data)
+                            }
+                        }
+                    }
+
+                    Button {
+                        viewOnceMode.toggle()
+                    } label: {
+                        Image(systemName: viewOnceMode ? "eye.fill" : "eye.slash")
+                            .font(.title3)
+                            .foregroundStyle(viewOnceMode ? Theme.cyan : Theme.textSecondary)
+                    }
+
+                    TextField("Message", text: $draft, axis: .vertical)
+                        .lineLimit(1...5)
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Theme.surfaceElevated,
+                                    in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18)
+                            .strokeBorder(Theme.divider, lineWidth: 1))
+
+                    if draft.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Button { recorder.start() } label: {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 26)).foregroundStyle(Theme.cyan)
+                        }
+                    } else {
+                        Button { sendText() } label: {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 32)).foregroundStyle(Theme.cyan)
                         }
                     }
                 }
-
-                Button {
-                    viewOnceMode.toggle()
-                } label: {
-                    Image(systemName: viewOnceMode ? "eye.fill" : "eye.slash")
-                        .font(.title3)
-                        .foregroundStyle(viewOnceMode ? Theme.cyan : Theme.textSecondary)
-                }
-
-                TextField("Message", text: $draft, axis: .vertical)
-                    .lineLimit(1...5)
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Theme.surfaceElevated,
-                                in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18)
-                        .strokeBorder(Theme.divider, lineWidth: 1))
-
-                Button {
-                    sendText()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(Theme.cyan)
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .padding(.horizontal, 12).padding(.bottom, 10).padding(.top, 6)
             }
-            .padding(.horizontal, 12).padding(.bottom, 10).padding(.top, 6)
         }
         .background(Theme.surface.opacity(0.9))
         .overlay(Rectangle().fill(Theme.divider).frame(height: 0.5), alignment: .top)
@@ -173,6 +181,28 @@ struct ChatView: View {
         }
     }
 
+    private var recordingBar: some View {
+        HStack(spacing: 14) {
+            Button { recorder.cancel() } label: {
+                Image(systemName: "trash").font(.title3).foregroundStyle(.red)
+            }
+            Circle().fill(.red).frame(width: 10, height: 10)
+                .opacity(0.9)
+            Text(timeString(recorder.elapsed))
+                .font(.body.monospacedDigit()).foregroundStyle(Theme.textPrimary)
+            Text("Recording…").foregroundStyle(Theme.textSecondary).font(.footnote)
+            Spacer()
+            Button { stopAndSendVoice() } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 32)).foregroundStyle(Theme.cyan)
+            }
+        }
+    }
+
+    private func timeString(_ t: TimeInterval) -> String {
+        let s = Int(t); return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
     private func sendImage(_ data: Data) {
         guard let me = AppState.currentUserId else { return }
         let type: MessageType = viewOnceMode ? .viewOnceImage : .image
@@ -182,9 +212,34 @@ struct ChatView: View {
                         sentAt: Date(), isOutgoing: true)
         db.append(message: m)
         viewOnceMode = false
+        uploadAndSend(bytes: data, type: type)
+    }
+
+    private func stopAndSendVoice() {
+        guard let (data, duration) = recorder.stop(), let me = AppState.currentUserId else { return }
+        let m = Message(id: UUID().uuidString,
+                        conversationId: conversation.id,
+                        senderId: me, type: .voice, text: nil, imageData: nil,
+                        sentAt: Date(), isOutgoing: true,
+                        audioData: data, audioDuration: duration)
+        db.append(message: m)
+        uploadAndSend(bytes: data, type: .voice)
+    }
+
+    /// Encrypts media bytes with the conversation key, uploads them as an
+    /// attachment, then sends a message whose payload is the file id.
+    private func uploadAndSend(bytes: Data, type: MessageType) {
+        let convoId = conversation.id
+        let recipient = conversation.peer.numericId
         Task {
-            _ = try? await APIClient.shared.requestAttachmentUpload(byteCount: data.count)
-            // TODO(backend): upload + send envelope with the fileId.
+            let key = KeyManager.placeholderConversationKey(for: convoId)
+            guard let ct = try? KeyManager.encrypt(plaintext: bytes, sharedSecret: key),
+                  let ticket = try? await APIClient.shared.requestAttachmentUpload(byteCount: ct.count)
+            else { return }
+            try? await APIClient.shared.uploadAttachment(fileId: ticket.fileId, data: ct)
+            try? await APIClient.shared.sendAttachmentMessage(
+                conversationId: convoId, recipientNumericId: recipient,
+                fileId: ticket.fileId, type: type)
         }
     }
 }

@@ -48,19 +48,47 @@ final class AppState: ObservableObject {
                 unreadCount: 0, updatedAt: env.sentAt))
         }
 
-        var text: String?
-        if let ct = Data(base64Encoded: env.payload) {
-            let key = KeyManager.placeholderConversationKey(for: env.conversationId)
-            if let pt = try? KeyManager.decrypt(ciphertext: ct, sharedSecret: key) {
+        let key = KeyManager.placeholderConversationKey(for: env.conversationId)
+        let isOutgoing = env.senderId == String(acct.numericId)
+
+        switch env.type {
+        case .image, .viewOnceImage, .voice:
+            // payload = base64(fileId). Show a placeholder immediately, then
+            // download + decrypt the bytes in the background.
+            let fileId = Data(base64Encoded: env.payload)
+                .flatMap { String(data: $0, encoding: .utf8) }
+            db.append(message: Message(
+                id: env.id, conversationId: env.conversationId,
+                senderId: env.senderId, type: env.type,
+                text: nil, imageData: nil, sentAt: env.sentAt,
+                isOutgoing: isOutgoing, loadingMedia: true))
+            guard let fileId else { return }
+            Task {
+                guard let ct = try? await APIClient.shared.downloadAttachment(fileId: fileId),
+                      let bytes = try? KeyManager.decrypt(ciphertext: ct, sharedSecret: key)
+                else { return }
+                await MainActor.run {
+                    if env.type == .voice {
+                        LocalDatabase.shared.attachMedia(
+                            messageId: env.id, in: env.conversationId, audio: bytes)
+                    } else {
+                        LocalDatabase.shared.attachMedia(
+                            messageId: env.id, in: env.conversationId, image: bytes)
+                    }
+                }
+            }
+        default:
+            var text: String?
+            if let ct = Data(base64Encoded: env.payload),
+               let pt = try? KeyManager.decrypt(ciphertext: ct, sharedSecret: key) {
                 text = String(data: pt, encoding: .utf8)
             }
+            db.append(message: Message(
+                id: env.id, conversationId: env.conversationId,
+                senderId: env.senderId, type: env.type,
+                text: text ?? "[encrypted]", imageData: nil,
+                sentAt: env.sentAt, isOutgoing: isOutgoing))
         }
-        db.append(message: Message(
-            id: env.id, conversationId: env.conversationId,
-            senderId: env.senderId, type: env.type,
-            text: text ?? "[encrypted]", imageData: nil,
-            sentAt: env.sentAt,
-            isOutgoing: env.senderId == String(acct.numericId)))
     }
 
     func bootstrap() async {

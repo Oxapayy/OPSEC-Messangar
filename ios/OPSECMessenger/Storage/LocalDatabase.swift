@@ -50,6 +50,19 @@ final class LocalDatabase: ObservableObject {
         }
     }
 
+    /// Fills in a media message's bytes once download+decrypt finishes.
+    func attachMedia(messageId: String, in conversationId: String,
+                     image: Data? = nil, audio: Data? = nil, duration: Double = 0) {
+        guard var list = messages[conversationId],
+              let i = list.firstIndex(where: { $0.id == messageId }) else { return }
+        var m = list[i]
+        m.loadingMedia = false
+        if let image { m.imageData = image }
+        if let audio { m.audioData = audio; m.audioDuration = duration }
+        list[i] = m
+        messages[conversationId] = list
+    }
+
     func markRead(_ conversationId: String) {
         guard let i = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
         conversations[i].unreadCount = 0
