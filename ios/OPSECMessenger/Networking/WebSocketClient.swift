@@ -9,9 +9,22 @@ actor WebSocketClient {
     private var receiveLoop: Task<Void, Never>?
 
     var onEvent: (@Sendable (SocketEvent) -> Void)?
+    var onCallFrame: (@Sendable ([String: Any]) -> Void)?
 
     func setOnEvent(_ handler: @escaping @Sendable (SocketEvent) -> Void) {
         onEvent = handler
+    }
+    func setOnCallFrame(_ handler: @escaping @Sendable ([String: Any]) -> Void) {
+        onCallFrame = handler
+    }
+
+    /// Sends an arbitrary call/signalling frame ({kind, payload}). Used for
+    /// ringing, accept/reject/end and streamed audio chunks.
+    func sendRaw(kind: String, payload: [String: Any]) async {
+        guard let task else { return }
+        let obj: [String: Any] = ["kind": kind, "payload": payload]
+        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        try? await task.send(.data(data))
     }
 
     func connect(sessionToken: String) async {
@@ -56,6 +69,13 @@ actor WebSocketClient {
     }
 
     private func handle(_ data: Data) async {
+        // Call frames (ring/accept/reject/end/audio) carry a free-form payload
+        // and are routed straight to the call manager, not the typed decoder.
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let kind = obj["kind"] as? String, kind.hasPrefix("call") {
+            onCallFrame?(obj)
+            return
+        }
         guard let event = try? JSONDecoder.snake.decode(SocketEvent.self, from: data) else {
             return
         }

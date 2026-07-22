@@ -41,7 +41,7 @@ struct ChatView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { CallView(peer: conversation.peer, outgoing: true) } label: {
+                Button { CallManager.shared.startCall(conversation.peer) } label: {
                     Image(systemName: "phone.fill").foregroundStyle(Theme.cyan)
                 }
             }
@@ -244,4 +244,7 @@ struct ChatView: View {
     }
 }
 
-extension AppState { static var currentUserId: String? = nil }
+extension AppState {
+    static var currentUserId: String? = nil
+    static var myUsername: String? = nil
+}

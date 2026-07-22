@@ -147,15 +147,19 @@ func (s *Server) readPump(ctx context.Context, c *wsConn) {
 					_ = s.DB.MarkDelivered(ctx, id)
 				}
 			}
-		case "callAnswer", "callEnd", "typing":
-			// Relay signalling to the other party.
+		case "callOffer", "callAccept", "callReject", "callAnswer",
+			"callEnd", "callAudio", "typing":
+			// Relay signalling / audio to the other party. Blocked pairs
+			// can't ring each other.
 			if m, ok := f.Payload.(map[string]any); ok {
 				if peerNumStr, _ := m["peer_id"].(string); peerNumStr != "" {
 					var peerID int64
 					_ = s.DB.QueryRowContext(ctx,
 						`SELECT id FROM accounts WHERE numeric_id = ?`, peerNumStr).Scan(&peerID)
 					if peerID != 0 {
-						s.Hub.Deliver(peerID, f)
+						if blocked, _ := s.DB.IsBlocked(ctx, c.accountID, peerID); !blocked {
+							s.Hub.Deliver(peerID, f)
+						}
 					}
 				}
 			}

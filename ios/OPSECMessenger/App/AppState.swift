@@ -105,9 +105,11 @@ final class AppState: ObservableObject {
         if let acct = KeychainStore.shared.loadAccount() {
             account = acct
             AppState.currentUserId = String(acct.numericId)
+            AppState.myUsername = acct.username
             APIClient.shared.setSessionToken(acct.sessionToken)
             phase = .ready
             await attachSocketHandlers()
+            await CallManager.shared.attach()
             await socket.connect(sessionToken: acct.sessionToken)
             await LocalDatabase.shared.refreshContacts()
             await LocalDatabase.shared.refreshGroups()
@@ -121,9 +123,11 @@ final class AppState: ObservableObject {
         KeychainStore.shared.saveAccount(acct)
         account = acct
         AppState.currentUserId = String(acct.numericId)
+        AppState.myUsername = acct.username
         APIClient.shared.setSessionToken(acct.sessionToken)
         phase = .ready
         await attachSocketHandlers()
+        await CallManager.shared.attach()
         await socket.connect(sessionToken: acct.sessionToken)
         await LocalDatabase.shared.refreshContacts()
         await LocalDatabase.shared.refreshGroups()

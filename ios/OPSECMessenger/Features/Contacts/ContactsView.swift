@@ -63,7 +63,7 @@ struct ContactsView: View {
                     .foregroundStyle(Theme.cyan).font(.title3)
             }
             .buttonStyle(.plain)
-            NavigationLink { CallView(peer: c, outgoing: true) } label: {
+            Button { CallManager.shared.startCall(c) } label: {
                 Image(systemName: "phone.fill")
                     .foregroundStyle(Theme.cyan).font(.title3)
                     .padding(.leading, 6)
