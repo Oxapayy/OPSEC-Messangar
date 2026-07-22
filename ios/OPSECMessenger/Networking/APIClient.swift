@@ -153,6 +153,15 @@ final class APIClient {
 
     // MARK: - Messages
 
+    /// Purges the 1:1 chat between me and peer on the server (both directions)
+    /// and tells the peer's clients to clear it locally too — so "delete" is
+    /// shared, not one-sided.
+    func deleteConversation(peerNumericId: UInt64) async throws {
+        let _: EmptyResponse = try await post(
+            "/v1/conversations/delete",
+            body: ["peer_id": String(peerNumericId)], authed: true)
+    }
+
     func sendMessage(conversationId: String, recipientNumericId: UInt64,
                      ciphertext: Data, type: MessageType) async throws {
         let body: [String: Any] = [

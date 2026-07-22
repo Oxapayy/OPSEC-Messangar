@@ -45,6 +45,8 @@ struct GroupChatView: View {
         .navigationTitle(live.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { appState.activeConversationId = group.id }
+        .onDisappear { appState.activeConversationId = nil }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink { GroupMembersView(group: group) } label: {
@@ -81,14 +83,22 @@ struct GroupChatView: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
             } else {
                 HStack(alignment: .bottom, spacing: 8) {
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
+                    PhotosPicker(selection: $pickerItem,
+                                 matching: .any(of: [.images, .videos])) {
                         Image(systemName: "photo").font(.title2).foregroundStyle(Theme.cyan)
                     }
                     .onChange(of: pickerItem) { _, item in
                         Task {
-                            if let data = try? await item?.loadTransferable(type: Data.self) {
-                                sendImage(data)
+                            guard let item else { return }
+                            let isVideo = item.supportedContentTypes.contains {
+                                $0.conforms(to: .movie) || $0.conforms(to: .video)
                             }
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                await MainActor.run {
+                                    isVideo ? sendVideo(data) : sendImage(data)
+                                }
+                            }
+                            await MainActor.run { pickerItem = nil }
                         }
                     }
                     TextField("Message", text: $draft, axis: .vertical)
@@ -139,6 +149,14 @@ struct GroupChatView: View {
                                    senderId: me, type: .image, text: nil, imageData: data,
                                    sentAt: Date(), isOutgoing: true))
         uploadAndSend(bytes: data, type: .image)
+    }
+
+    private func sendVideo(_ data: Data) {
+        guard let me = AppState.currentUserId else { return }
+        db.append(message: Message(id: UUID().uuidString, conversationId: group.id,
+                                   senderId: me, type: .video, text: nil, imageData: data,
+                                   sentAt: Date(), isOutgoing: true))
+        uploadAndSend(bytes: data, type: .video)
     }
 
     private func stopAndSendVoice() {

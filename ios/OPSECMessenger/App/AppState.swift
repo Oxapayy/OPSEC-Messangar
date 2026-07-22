@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CryptoKit
+import UIKit
 
 @MainActor
 final class AppState: ObservableObject {
@@ -20,17 +21,65 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Which conversation is currently on-screen (nil when the user isn't
+    /// inside a chat). Used to suppress a notification for the chat you're
+    /// already reading — matches native messenger behavior.
+    @Published var activeConversationId: String?
+
     private func handle(_ event: SocketEvent) {
         switch event {
         case .message(let env):
             deliver(env)
-        case .contactRequest:
+            notifyIncoming(env)
+        case .contactRequest(let who):
             Task { await LocalDatabase.shared.refreshContacts() }
-        case .groupInvite, .groupUpdate, .groupRemoved:
+            NotificationManager.shared.deliverLocal(
+                title: "New friend request",
+                body: "@\(who.username) wants to connect")
+        case .groupInvite(let g):
             Task { await LocalDatabase.shared.refreshGroups() }
+            NotificationManager.shared.deliverLocal(
+                title: "Group invite", body: "You were invited to \(g.name)")
+        case .groupUpdate, .groupRemoved:
+            Task { await LocalDatabase.shared.refreshGroups() }
+        case .conversationDeleted(let peerId):
+            handleConversationDeleted(peerId: peerId)
         default:
             break
         }
+    }
+
+    private func notifyIncoming(_ env: MessageEnvelope) {
+        // Don't ping for messages you sent or for the chat you're viewing.
+        let me = account.map { String($0.numericId) }
+        guard env.senderId != me else { return }
+        if UIApplication.shared.applicationState == .active,
+           activeConversationId == env.conversationId { return }
+
+        let db = LocalDatabase.shared
+        let title: String
+        if let g = db.group(env.conversationId) {
+            title = "\(g.name) · @\(env.senderUsername ?? "user")"
+        } else {
+            title = "@\(env.senderUsername ?? "user")"
+        }
+        let body: String
+        switch env.type {
+        case .text:          body = "New message"
+        case .image:         body = "📷 Sent a photo"
+        case .video:         body = "🎬 Sent a video"
+        case .voice:         body = "🎤 Voice message"
+        case .viewOnceImage: body = "👁 View-once photo"
+        case .location:      body = "📍 Shared a location"
+        default:             body = "New message"
+        }
+        NotificationManager.shared.deliverLocal(title: title, body: body)
+    }
+
+    private func handleConversationDeleted(peerId: String) {
+        guard let me = account?.numericId, let their = UInt64(peerId) else { return }
+        let convoId = Conversation.directId(me, their)
+        LocalDatabase.shared.clearConversation(convoId)
     }
 
     private func deliver(_ env: MessageEnvelope) {
@@ -57,7 +106,7 @@ final class AppState: ObservableObject {
         let isOutgoing = env.senderId == String(acct.numericId)
 
         switch env.type {
-        case .image, .viewOnceImage, .voice:
+        case .image, .viewOnceImage, .voice, .video:
             // payload = base64(fileId). Show a placeholder immediately, then
             // download + decrypt the bytes in the background.
             let fileId = Data(base64Encoded: env.payload)
@@ -133,6 +182,8 @@ final class AppState: ObservableObject {
         await socket.connect(sessionToken: acct.sessionToken)
         await LocalDatabase.shared.refreshContacts()
         await LocalDatabase.shared.refreshGroups()
+        // Ask for notification permission the first time an account signs in.
+        Task { await NotificationManager.shared.requestAuthorization() }
     }
 
     func signOut() {

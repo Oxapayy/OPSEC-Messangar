@@ -63,6 +63,7 @@ type profile struct {
 	Username  string  `json:"username"`
 	NumericID uint64  `json:"numeric_id"`
 	PublicKey *string `json:"public_key"`
+	Trusted   bool    `json:"trusted"`
 }
 type loginResp struct {
 	SessionToken string  `json:"session_token"`
@@ -180,6 +181,11 @@ func (s *Server) handleAddContact(w http.ResponseWriter, r *http.Request) {
 	// GET /v1/contacts/requests on next launch).
 	if adder, err := s.DB.AccountByID(r.Context(), accountID(r)); err == nil {
 		s.Hub.Deliver(contactID, wsFrame{Kind: "contactRequest", Payload: acctToProfile(adder)})
+	}
+	// If I just accepted their request, they'll want to see me appear as a
+	// mutual contact — nudge every device I'm signed into as well.
+	if added, err := s.DB.AccountByID(r.Context(), contactID); err == nil {
+		s.Hub.Deliver(accountID(r), wsFrame{Kind: "contactRequest", Payload: acctToProfile(added)})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -371,6 +377,46 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type purgeReq struct {
+	PeerID string `json:"peer_id"`
+}
+
+// handleDeleteConversation wipes the 1:1 chat between me and peer on the
+// server (all envelopes both ways) and asks the peer's clients to clear it
+// locally too — so "delete" is shared, not one-sided.
+func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
+	var req purgeReq
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad body")
+		return
+	}
+	peerNumeric, err := strconv.ParseUint(req.PeerID, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad peer_id")
+		return
+	}
+	var peerID int64
+	err = s.DB.QueryRowContext(r.Context(),
+		`SELECT id FROM accounts WHERE numeric_id = ?`, peerNumeric).Scan(&peerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "no such user")
+		return
+	}
+	me := accountID(r)
+	_, _ = s.DB.ExecContext(r.Context(),
+		`DELETE FROM envelopes
+		 WHERE (sender_id = ? AND recipient_id = ?)
+		    OR (sender_id = ? AND recipient_id = ?)`, me, peerID, peerID, me)
+	// Tell the peer's client to clear its local copy too.
+	if myAcct, err := s.DB.AccountByID(r.Context(), me); err == nil {
+		s.Hub.Deliver(peerID, wsFrame{
+			Kind: "conversationDeleted",
+			Payload: map[string]any{"peer_id": strconv.FormatUint(myAcct.NumericID, 10)},
+		})
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ---------- attachments ----------
 
 type attachReq struct {
@@ -550,5 +596,6 @@ func acctToProfile(a *Account) profile {
 		Username:  uname,
 		NumericID: a.NumericID,
 		PublicKey: pk,
+		Trusted:   a.Trusted,
 	}
 }

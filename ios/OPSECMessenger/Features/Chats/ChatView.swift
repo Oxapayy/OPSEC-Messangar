@@ -4,6 +4,7 @@ import PhotosUI
 struct ChatView: View {
     let conversation: Conversation
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appState: AppState
     @StateObject private var db = LocalDatabase.shared
     @State private var draft = ""
     @State private var pickerItem: PhotosPickerItem?
@@ -40,6 +41,17 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            if conversation.peer.trusted {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 4) {
+                        Text("@" + conversation.peer.username).font(.headline)
+                            .foregroundStyle(Theme.textPrimary)
+                        TrustedBadge()
+                    }
+                }
+            }
+        }
+        .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { CallManager.shared.startCall(conversation.peer) } label: {
                     Image(systemName: "phone.fill").foregroundStyle(Theme.cyan)
@@ -61,15 +73,25 @@ struct ChatView: View {
                 }
             }
         }
-        .onAppear { db.markRead(conversation.id) }
+        .onAppear {
+            db.markRead(conversation.id)
+            appState.activeConversationId = conversation.id
+        }
+        .onDisappear { appState.activeConversationId = nil }
         .alert("Delete this chat?", isPresented: $confirmClear) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
-                db.clearConversation(conversation.id)
-                dismiss()
+                Task {
+                    // Ask the server to wipe both sides first; then clear
+                    // locally regardless (so the button always feels final).
+                    try? await APIClient.shared.deleteConversation(
+                        peerNumericId: conversation.peer.numericId)
+                    db.clearConversation(conversation.id)
+                    dismiss()
+                }
             }
         } message: {
-            Text("Are you sure you want to delete this chat from the database? This removes every message in it from this device.")
+            Text("Are you sure you want to delete this chat from the database? This removes it for BOTH you and @\(conversation.peer.username).")
         }
         .alert("Remove @\(conversation.peer.username)?", isPresented: $confirmRemove) {
             Button("Cancel", role: .cancel) {}
@@ -113,15 +135,12 @@ struct ChatView: View {
                 recordingBar
             } else {
                 HStack(alignment: .bottom, spacing: 8) {
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
+                    PhotosPicker(selection: $pickerItem,
+                                 matching: .any(of: [.images, .videos])) {
                         Image(systemName: "photo").font(.title2).foregroundStyle(Theme.cyan)
                     }
                     .onChange(of: pickerItem) { _, item in
-                        Task {
-                            if let data = try? await item?.loadTransferable(type: Data.self) {
-                                sendImage(data)
-                            }
-                        }
+                        Task { await handlePicked(item) }
                     }
 
                     Button {
@@ -201,6 +220,26 @@ struct ChatView: View {
 
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t); return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// Handles a picked photo or video and routes to the right send method.
+    private func handlePicked(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        let types = item.supportedContentTypes
+        let isVideo = types.contains { $0.conforms(to: .movie) || $0.conforms(to: .video) }
+        if let data = try? await item.loadTransferable(type: Data.self) {
+            await MainActor.run { isVideo ? sendVideo(data) : sendImage(data) }
+        }
+        await MainActor.run { pickerItem = nil }
+    }
+
+    private func sendVideo(_ data: Data) {
+        guard let me = AppState.currentUserId else { return }
+        db.append(message: Message(id: UUID().uuidString,
+                                   conversationId: conversation.id,
+                                   senderId: me, type: .video, text: nil, imageData: data,
+                                   sentAt: Date(), isOutgoing: true))
+        uploadAndSend(bytes: data, type: .video)
     }
 
     private func sendImage(_ data: Data) {

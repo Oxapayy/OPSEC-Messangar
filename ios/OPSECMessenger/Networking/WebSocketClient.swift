@@ -89,6 +89,7 @@ enum SocketEvent: Codable {
     case groupInvite(GroupInfo)
     case groupUpdate(GroupInfo)
     case groupRemoved(groupId: String)
+    case conversationDeleted(peerId: String)
     case typing(conversationId: String, userId: String)
     case callOffer(from: String, sdp: String, callId: String)
     case callAnswer(callId: String, sdp: String)
@@ -98,6 +99,7 @@ enum SocketEvent: Codable {
     // Simple discriminator-based coding.
     enum Kind: String, Codable {
         case message, contactRequest, groupInvite, groupUpdate, groupRemoved
+        case conversationDeleted
         case typing, callOffer, callAnswer, callEnd, presence
     }
     private enum CodingKeys: String, CodingKey { case kind, payload }
@@ -116,6 +118,9 @@ enum SocketEvent: Codable {
         case .groupRemoved:
             let p = try c.decode([String: String].self, forKey: .payload)
             self = .groupRemoved(groupId: p["groupId"] ?? p["group_id"] ?? "")
+        case .conversationDeleted:
+            let p = try c.decode([String: String].self, forKey: .payload)
+            self = .conversationDeleted(peerId: p["peerId"] ?? p["peer_id"] ?? "")
         case .typing:
             let p = try c.decode([String: String].self, forKey: .payload)
             self = .typing(conversationId: p["conversationId"] ?? "",
@@ -156,6 +161,9 @@ enum SocketEvent: Codable {
         case .groupRemoved(let gid):
             try c.encode(Kind.groupRemoved, forKey: .kind)
             try c.encode(["group_id": gid], forKey: .payload)
+        case .conversationDeleted(let pid):
+            try c.encode(Kind.conversationDeleted, forKey: .kind)
+            try c.encode(["peer_id": pid], forKey: .payload)
         case .typing(let cid, let uid):
             try c.encode(Kind.typing, forKey: .kind)
             try c.encode(["conversationId": cid, "userId": uid], forKey: .payload)

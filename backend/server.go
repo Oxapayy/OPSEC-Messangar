@@ -50,6 +50,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /v1/groups/{id}/leave", s.authed(s.handleGroupLeave))
 	mux.Handle("POST /v1/groups/{id}/messages", s.authed(s.handleGroupMessage))
 	mux.Handle("POST /v1/messages", s.authed(s.handleSendMessage))
+	mux.Handle("POST /v1/conversations/delete", s.authed(s.handleDeleteConversation))
 	mux.Handle("POST /v1/attachments", s.authed(s.handleRequestAttachment))
 	mux.Handle("PUT /v1/attachments/{id}", s.authed(s.handleUploadAttachment))
 	mux.Handle("GET /v1/attachments/{id}", s.authed(s.handleDownloadAttachment))

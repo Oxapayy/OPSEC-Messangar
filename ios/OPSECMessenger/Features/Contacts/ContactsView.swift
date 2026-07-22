@@ -5,6 +5,8 @@ struct ContactsView: View {
     @StateObject private var db = LocalDatabase.shared
     @State private var loading = true
     @State private var openChat: Conversation?
+    @State private var pendingAccept: Set<UInt64> = []
+    @State private var acceptError: String?
 
     var body: some View {
         ZStack {
@@ -40,6 +42,11 @@ struct ContactsView: View {
             }
         }
         .navigationDestination(item: $openChat) { c in ChatView(conversation: c) }
+        .alert("Error", isPresented: .init(
+            get: { acceptError != nil }, set: { if !$0 { acceptError = nil } }
+        )) { Button("OK", role: .cancel) {} } message: {
+            Text(acceptError ?? "")
+        }
         .task {
             loading = true
             await db.refreshContacts()
@@ -53,7 +60,10 @@ struct ContactsView: View {
         HStack(spacing: 12) {
             avatar(c)
             VStack(alignment: .leading) {
-                Text("@" + c.username).foregroundStyle(Theme.textPrimary)
+                HStack(spacing: 4) {
+                    Text("@" + c.username).foregroundStyle(Theme.textPrimary)
+                    if c.trusted { TrustedBadge() }
+                }
                 Text(String(c.numericId))
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             }
@@ -88,24 +98,44 @@ struct ContactsView: View {
         HStack(spacing: 12) {
             avatar(r)
             VStack(alignment: .leading) {
-                Text("@" + r.username).foregroundStyle(Theme.textPrimary)
+                HStack(spacing: 4) {
+                    Text("@" + r.username).foregroundStyle(Theme.textPrimary)
+                    if r.trusted { TrustedBadge() }
+                }
                 Text("wants to connect")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             }
             Spacer()
-            Button("Accept") {
-                Task {
-                    try? await APIClient.shared.addContact(userId: r.id)
-                    await db.refreshContacts()
+            Button {
+                accept(r)
+            } label: {
+                if pendingAccept.contains(r.numericId) {
+                    ProgressView().tint(Theme.onAccent)
+                } else {
+                    Text("Accept")
                 }
             }
             .buttonStyle(SecondaryButtonStyle())
             .frame(width: 96)
+            .disabled(pendingAccept.contains(r.numericId))
         }
         .padding(12)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14)
             .strokeBorder(Theme.cyan.opacity(0.35), lineWidth: 1))
+    }
+
+    private func accept(_ r: UserProfile) {
+        pendingAccept.insert(r.numericId)
+        Task {
+            defer { pendingAccept.remove(r.numericId) }
+            do {
+                try await APIClient.shared.addContact(userId: r.id)
+                await db.refreshContacts()
+            } catch {
+                acceptError = "Could not accept: \(error.localizedDescription)"
+            }
+        }
     }
 
     // MARK: - Helpers

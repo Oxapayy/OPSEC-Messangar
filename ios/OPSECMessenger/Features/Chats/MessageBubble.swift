@@ -4,6 +4,8 @@ struct MessageBubble: View {
     let message: Message
     let conversationId: String
     @State private var showViewOnce = false
+    @State private var showFullImage = false
+    @State private var showFullVideo = false
     @StateObject private var db = LocalDatabase.shared
     @StateObject private var player = VoicePlayer()
 
@@ -22,17 +24,27 @@ struct MessageBubble: View {
                 Text(message.text ?? "")
             case .image:
                 if let data = message.imageData, let ui = UIImage(data: data) {
-                    Image(uiImage: ui)
-                        .resizable().scaledToFit()
-                        .frame(maxWidth: 220)
-                        .cornerRadius(10)
+                    Button { showFullImage = true } label: {
+                        Image(uiImage: ui)
+                            .resizable().scaledToFit()
+                            .frame(maxWidth: 220)
+                            .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                    .fullScreenCover(isPresented: $showFullImage) {
+                        FullImageView(image: ui)
+                    }
                 } else {
                     mediaPlaceholder("Photo")
                 }
+            case .video:
+                videoRow
             case .voice:
                 voiceRow
             case .viewOnceImage:
                 viewOnceRow
+            case .location:
+                LocationBubble(message: message)
             case .callInvite:
                 Label("Call", systemImage: "phone.fill")
             case .systemNotice:
@@ -56,6 +68,26 @@ struct MessageBubble: View {
             }
         }
         .foregroundStyle(message.isOutgoing ? Theme.onAccent : Theme.textPrimary)
+    }
+
+    @ViewBuilder private var videoRow: some View {
+        if let data = message.imageData {
+            Button { showFullVideo = true } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.black.opacity(0.6))
+                        .frame(width: 220, height: 140)
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 44)).foregroundStyle(.white.opacity(0.9))
+                }
+            }
+            .buttonStyle(.plain)
+            .fullScreenCover(isPresented: $showFullVideo) {
+                FullVideoView(data: data)
+            }
+        } else {
+            mediaPlaceholder("Video")
+        }
     }
 
     @ViewBuilder private var voiceRow: some View {

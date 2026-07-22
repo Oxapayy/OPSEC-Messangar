@@ -289,7 +289,9 @@ func (s *Server) handleAcceptGroupInvite(w http.ResponseWriter, r *http.Request)
 	_, _ = s.DB.ExecContext(r.Context(),
 		`DELETE FROM group_invites WHERE group_id = ? AND invitee_id = ?`, groupID, me)
 	if info, err := s.DB.groupInfo(r.Context(), groupID); err == nil {
-		s.notifyGroup(r.Context(), groupID, me, wsFrame{Kind: "groupUpdate", Payload: info})
+		// Fan out to every member — INCLUDING me, so any other device I'm
+		// signed into refreshes and moves the group from the invites list.
+		s.notifyGroup(r.Context(), groupID, 0, wsFrame{Kind: "groupUpdate", Payload: info})
 		writeJSON(w, http.StatusOK, info)
 		return
 	}

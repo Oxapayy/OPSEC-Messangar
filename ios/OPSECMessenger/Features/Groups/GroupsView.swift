@@ -4,6 +4,8 @@ struct GroupsView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var db = LocalDatabase.shared
     @State private var showCreate = false
+    @State private var pendingJoin: Set<String> = []
+    @State private var joinError: String?
 
     var body: some View {
         ZStack {
@@ -39,7 +41,25 @@ struct GroupsView: View {
             }
         }
         .sheet(isPresented: $showCreate) { CreateGroupView() }
+        .alert("Error", isPresented: .init(
+            get: { joinError != nil }, set: { if !$0 { joinError = nil } }
+        )) { Button("OK", role: .cancel) {} } message: {
+            Text(joinError ?? "")
+        }
         .task { await db.refreshGroups() }
+    }
+
+    private func join(_ g: GroupInfo) {
+        pendingJoin.insert(g.id)
+        Task {
+            defer { pendingJoin.remove(g.id) }
+            do {
+                _ = try await APIClient.shared.acceptGroupInvite(g.id)
+                await db.refreshGroups()
+            } catch {
+                joinError = "Could not join: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func groupRow(_ g: GroupInfo) -> some View {
@@ -65,11 +85,13 @@ struct GroupsView: View {
                 Text("You've been invited").font(.caption).foregroundStyle(Theme.textSecondary)
             }
             Spacer()
-            Button("Join") {
-                Task { _ = try? await APIClient.shared.acceptGroupInvite(g.id)
-                       await db.refreshGroups() }
+            Button { join(g) } label: {
+                if pendingJoin.contains(g.id) {
+                    ProgressView().tint(Theme.onAccent)
+                } else { Text("Join") }
             }
             .buttonStyle(SecondaryButtonStyle()).frame(width: 76)
+            .disabled(pendingJoin.contains(g.id))
             Button {
                 Task { try? await APIClient.shared.declineGroupInvite(g.id)
                        await db.refreshGroups() }

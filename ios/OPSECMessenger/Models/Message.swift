@@ -1,7 +1,8 @@
 import Foundation
 
 enum MessageType: String, Codable {
-    case text, image, viewOnceImage, voice, callInvite, systemNotice
+    case text, image, viewOnceImage, voice, video, location
+    case callInvite, systemNotice
 }
 
 struct Message: Identifiable, Equatable, Codable {
@@ -28,6 +29,8 @@ struct Message: Identifiable, Equatable, Codable {
         case .image:               return "📷 Photo"
         case .viewOnceImage:       return "👁 View-once photo"
         case .voice:               return "🎤 Voice message"
+        case .video:               return "🎬 Video"
+        case .location:            return "📍 Location"
         case .callInvite:          return "📞 Call"
         }
     }

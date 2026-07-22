@@ -85,6 +85,8 @@ func (db *DB) migrate() error {
 			return err
 		}
 	}
+	// Additive migrations (safe if column already exists).
+	_, _ = db.Exec(`ALTER TABLE accounts ADD COLUMN is_trusted INTEGER NOT NULL DEFAULT 0`)
 	return db.migrateGroups()
 }
 
@@ -97,6 +99,7 @@ type Account struct {
 	Username    sql.NullString
 	PublicKey   sql.NullString
 	CreatedAt   time.Time
+	Trusted     bool
 }
 
 var ErrNotFound = errors.New("not found")
@@ -116,7 +119,7 @@ func (db *DB) AccountByHash(ctx context.Context, hash string) (*Account, error) 
 	// self-hosted messenger with small userbase we scan; for scale, index by
 	// a fast keyed HMAC of auth_key that's stored separately.
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, numeric_id, auth_key_hash, username, public_key, created_at FROM accounts`)
+		`SELECT id, numeric_id, auth_key_hash, username, public_key, created_at, is_trusted FROM accounts`)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +127,7 @@ func (db *DB) AccountByHash(ctx context.Context, hash string) (*Account, error) 
 	for rows.Next() {
 		var a Account
 		var created string
-		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created); err != nil {
+		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created, &a.Trusted); err != nil {
 			return nil, err
 		}
 		if VerifyArgon2id(hash, a.AuthKeyHash) {
@@ -139,9 +142,9 @@ func (db *DB) AccountByID(ctx context.Context, id int64) (*Account, error) {
 	var a Account
 	var created string
 	err := db.QueryRowContext(ctx,
-		`SELECT id, numeric_id, auth_key_hash, username, public_key, created_at
+		`SELECT id, numeric_id, auth_key_hash, username, public_key, created_at, is_trusted
 		 FROM accounts WHERE id = ?`, id).
-		Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created)
+		Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created, &a.Trusted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -156,9 +159,9 @@ func (db *DB) AccountByUsername(ctx context.Context, username string) (*Account,
 	var a Account
 	var created string
 	err := db.QueryRowContext(ctx,
-		`SELECT id, numeric_id, auth_key_hash, username, public_key, created_at
+		`SELECT id, numeric_id, auth_key_hash, username, public_key, created_at, is_trusted
 		 FROM accounts WHERE username = ? COLLATE NOCASE`, username).
-		Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created)
+		Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created, &a.Trusted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -276,7 +279,7 @@ func (db *DB) IsBlocked(ctx context.Context, a, b int64) (bool, error) {
 
 func (db *DB) ListBlocked(ctx context.Context, blocker int64) ([]*Account, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at
+		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at, a.is_trusted
 		 FROM accounts a JOIN blocks b ON b.blocked_id = a.id
 		 WHERE b.blocker_id = ? ORDER BY b.created_at DESC`, blocker)
 	if err != nil {
@@ -288,7 +291,7 @@ func (db *DB) ListBlocked(ctx context.Context, blocker int64) ([]*Account, error
 		var a Account
 		var created string
 		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username,
-			&a.PublicKey, &created); err != nil {
+			&a.PublicKey, &created, &a.Trusted); err != nil {
 			return nil, err
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, created)
@@ -301,7 +304,7 @@ func (db *DB) ListBlocked(ctx context.Context, blocker int64) ([]*Account, error
 // `me` has not (yet) added them back — the incoming friend-request inbox.
 func (db *DB) ListContactRequests(ctx context.Context, me int64) ([]*Account, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at
+		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at, a.is_trusted
 		 FROM accounts a JOIN contacts c ON c.owner_id = a.id
 		 WHERE c.contact_id = ?
 		   AND NOT EXISTS (SELECT 1 FROM contacts c2
@@ -316,7 +319,7 @@ func (db *DB) ListContactRequests(ctx context.Context, me int64) ([]*Account, er
 		var a Account
 		var created string
 		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username,
-			&a.PublicKey, &created); err != nil {
+			&a.PublicKey, &created, &a.Trusted); err != nil {
 			return nil, err
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, created)
@@ -327,7 +330,7 @@ func (db *DB) ListContactRequests(ctx context.Context, me int64) ([]*Account, er
 
 func (db *DB) ListContacts(ctx context.Context, owner int64) ([]*Account, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at
+		`SELECT a.id, a.numeric_id, a.auth_key_hash, a.username, a.public_key, a.created_at, a.is_trusted
 		 FROM accounts a JOIN contacts c ON c.contact_id = a.id
 		 WHERE c.owner_id = ? ORDER BY c.added_at DESC`, owner)
 	if err != nil {
@@ -338,7 +341,7 @@ func (db *DB) ListContacts(ctx context.Context, owner int64) ([]*Account, error)
 	for rows.Next() {
 		var a Account
 		var created string
-		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created); err != nil {
+		if err := rows.Scan(&a.ID, &a.NumericID, &a.AuthKeyHash, &a.Username, &a.PublicKey, &created, &a.Trusted); err != nil {
 			return nil, err
 		}
 		a.CreatedAt, _ = time.Parse(time.RFC3339, created)
