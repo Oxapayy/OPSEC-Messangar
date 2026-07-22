@@ -1,6 +1,6 @@
 import Foundation
 
-struct Conversation: Identifiable, Hashable {
+struct Conversation: Identifiable, Hashable, Codable {
     let id: String
     let peer: UserProfile
     var lastMessage: Message?

@@ -4,7 +4,7 @@ enum MessageType: String, Codable {
     case text, image, viewOnceImage, voice, callInvite, systemNotice
 }
 
-struct Message: Identifiable, Equatable {
+struct Message: Identifiable, Equatable, Codable {
     let id: String
     let conversationId: String
     let senderId: String

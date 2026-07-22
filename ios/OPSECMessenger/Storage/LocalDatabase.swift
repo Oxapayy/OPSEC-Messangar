@@ -14,6 +14,32 @@ final class LocalDatabase: ObservableObject {
     @Published private(set) var groups: [GroupInfo] = []
     @Published private(set) var groupInvites: [GroupInfo] = []
 
+    /// The account whose chats are currently loaded; drives which on-disk file
+    /// we persist to. nil = signed out (in-memory changes aren't saved).
+    private var currentAccountId: UInt64?
+
+    /// Loads this account's chats from disk, replacing whatever's in memory.
+    /// Call on sign-in / cold launch before connecting the socket.
+    func load(for accountId: UInt64) {
+        currentAccountId = accountId
+        let snap = PersistentStore.load(accountId)
+        conversations = snap.conversations
+        messages = snap.messages
+    }
+
+    /// Writes the current chats to the active account's file. Debounced onto
+    /// the next runloop tick so a burst of appends collapses into one write.
+    private var savePending = false
+    private func persist() {
+        guard let id = currentAccountId, !savePending else { return }
+        savePending = true
+        Task { @MainActor in
+            savePending = false
+            PersistentStore.save(
+                .init(conversations: conversations, messages: messages), for: id)
+        }
+    }
+
     func isGroup(_ conversationId: String) -> Bool {
         groups.contains { $0.id == conversationId }
     }
@@ -53,15 +79,21 @@ final class LocalDatabase: ObservableObject {
         } else {
             conversations.insert(conversation, at: 0)
         }
+        persist()
     }
 
     func append(message: Message) {
+        // Ignore exact duplicates (e.g. an envelope re-flushed on reconnect).
+        if messages[message.conversationId]?.contains(where: { $0.id == message.id }) == true {
+            return
+        }
         messages[message.conversationId, default: []].append(message)
         if let i = conversations.firstIndex(where: { $0.id == message.conversationId }) {
             conversations[i].lastMessage = message
             conversations[i].updatedAt = message.sentAt
             if !message.isOutgoing { conversations[i].unreadCount += 1 }
         }
+        persist()
     }
 
     /// Fills in a media message's bytes once download+decrypt finishes.
@@ -75,22 +107,27 @@ final class LocalDatabase: ObservableObject {
         if let audio { m.audioData = audio; m.audioDuration = duration }
         list[i] = m
         messages[conversationId] = list
+        persist()
     }
 
     func markRead(_ conversationId: String) {
         guard let i = conversations.firstIndex(where: { $0.id == conversationId }) else { return }
         conversations[i].unreadCount = 0
+        persist()
     }
 
     /// Deletes a single conversation and all its messages from the local store.
     func clearConversation(_ conversationId: String) {
         conversations.removeAll { $0.id == conversationId }
         messages[conversationId] = nil
+        persist()
     }
 
-    /// Wipes ALL local state. Called on sign-out / account switch so one
-    /// account's chats never bleed into another's on the same device.
+    /// Clears in-memory state on sign-out. On-disk history is kept so the
+    /// account's chats come back when they sign in again; only server-fetched
+    /// data (contacts/groups) is dropped.
     func wipe() {
+        currentAccountId = nil
         conversations = []
         messages = [:]
         contacts = []
@@ -115,5 +152,6 @@ final class LocalDatabase: ObservableObject {
                           isOutgoing: old.isOutgoing,
                           consumed: true)
         messages[conversationId] = list
+        persist()
     }
 }

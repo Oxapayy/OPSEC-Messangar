@@ -106,6 +106,7 @@ final class AppState: ObservableObject {
             account = acct
             AppState.currentUserId = String(acct.numericId)
             AppState.myUsername = acct.username
+            LocalDatabase.shared.load(for: acct.numericId)   // restore saved chats
             APIClient.shared.setSessionToken(acct.sessionToken)
             phase = .ready
             await attachSocketHandlers()
@@ -119,7 +120,8 @@ final class AppState: ObservableObject {
     }
 
     func completeOnboarding(_ acct: Account) async {
-        LocalDatabase.shared.wipe()   // start clean for the new account
+        LocalDatabase.shared.wipe()                    // drop any prior account
+        LocalDatabase.shared.load(for: acct.numericId) // restore this one's chats
         KeychainStore.shared.saveAccount(acct)
         account = acct
         AppState.currentUserId = String(acct.numericId)
