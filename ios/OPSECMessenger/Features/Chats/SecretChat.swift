@@ -281,7 +281,7 @@ struct SecretChatView: View {
     private var scroller: some View {
         ScrollView {
             LazyVStack(spacing: 4) {
-                ForEach(mgr.messages) { m in
+                ForEach(mgr.messages, id: \.id) { m in
                     HStack {
                         if m.fromMe { Spacer(minLength: 40) }
                         VStack(alignment: .leading, spacing: 4) {
