@@ -298,8 +298,13 @@ struct SecretChatView: View {
                                                  : Theme.textSecondary)
                         }
                         .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 16)
-                            .fill(m.fromMe ? Theme.bubbleOutgoing : Theme.surfaceElevated))
+                        .background {
+                            if m.fromMe {
+                                RoundedRectangle(cornerRadius: 16).fill(Theme.bubbleOutgoing)
+                            } else {
+                                RoundedRectangle(cornerRadius: 16).fill(Theme.surfaceElevated)
+                            }
+                        }
                         .foregroundStyle(m.fromMe ? Theme.onAccent : Theme.textPrimary)
                         if !m.fromMe { Spacer(minLength: 40) }
                     }
